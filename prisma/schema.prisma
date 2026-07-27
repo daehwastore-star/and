@@ -1,0 +1,80 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// 밴드 멤버 (메인 + 객원)
+model Member {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  isGuest     Boolean @default(false) // 객원 여부
+  active      Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  attendances Attendance[]
+  votes       PollVote[]
+}
+
+// 합주 기록 (정산 단위)
+model Rehearsal {
+  id             String   @id @default(cuid())
+  date           DateTime // 합주 날짜/시간
+  hours          Int      @default(2) // 합주 시간 (보통 2, 가끔 3)
+  roomCost       Int      @default(0) // 합주실 비용 (원)
+  afterPartyCost Int      @default(0) // 뒤풀이 비용 (원, 0이면 뒤풀이 없음)
+  memo           String?
+  createdAt      DateTime @default(now())
+
+  attendances Attendance[]
+}
+
+// 합주별 멤버 참석 정보
+model Attendance {
+  id          String  @id @default(cuid())
+  rehearsalId String
+  memberId    String
+  late        Boolean @default(false) // 지각 여부 → 1시간 비용의 절반 추가 부담
+  afterParty  Boolean @default(false) // 뒤풀이 참석 여부
+
+  rehearsal Rehearsal @relation(fields: [rehearsalId], references: [id], onDelete: Cascade)
+  member    Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([rehearsalId, memberId])
+}
+
+// 합주 스케줄 투표
+model SchedulePoll {
+  id        String   @id @default(cuid())
+  title     String // 예: "8월 첫째주 합주"
+  closed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  options PollOption[]
+}
+
+// 투표 후보 날짜/시간
+model PollOption {
+  id       String   @id @default(cuid())
+  pollId   String
+  startsAt DateTime // 후보 시작 시각
+
+  poll  SchedulePoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+}
+
+// 멤버별 가능 여부
+model PollVote {
+  id        String  @id @default(cuid())
+  optionId  String
+  memberId  String
+  available Boolean @default(true)
+
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  member Member     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([optionId, memberId])
+}

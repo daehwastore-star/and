@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0f0f13;
+  --foreground: #f4f4f5;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand: #a78bfa;
+  --color-brand-dark: #8b5cf6;
+  --color-surface: #1b1b22;
+  --color-surface-2: #26262f;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-tap-highlight-color: transparent;
+}
