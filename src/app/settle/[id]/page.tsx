@@ -12,6 +12,11 @@ interface Attendance {
   afterParty: boolean
   member: { name: string }
 }
+interface RehearsalSongItem {
+  id: string
+  songId: string
+  song: { title: string; artist: string | null; artwork: string | null }
+}
 interface Rehearsal {
   id: string
   date: string
@@ -20,6 +25,7 @@ interface Rehearsal {
   afterPartyCost: number
   memo: string | null
   attendances: Attendance[]
+  songs: RehearsalSongItem[]
 }
 
 export default function RehearsalDetailPage({
@@ -98,6 +104,7 @@ export default function RehearsalDetailPage({
                 late: a.late,
                 afterParty: a.afterParty,
               })),
+              songIds: rehearsal.songs.map(s => s.songId),
             }}
             submitLabel="수정 저장"
             onSubmit={async payload => {
@@ -131,6 +138,34 @@ export default function RehearsalDetailPage({
         {rehearsal.hours}시간 합주 · {result.attendeeCount}명 참석
         {rehearsal.memo && ` · ${rehearsal.memo}`}
       </p>
+
+      {/* 연습곡 */}
+      {rehearsal.songs.length > 0 && (
+        <section className="mt-4 overflow-hidden rounded-2xl bg-surface">
+          <div className="border-b border-zinc-200 px-4 py-2.5 text-sm font-semibold">
+            🎵 연습곡
+          </div>
+          {rehearsal.songs.map(rs => (
+            <div
+              key={rs.id}
+              className="flex items-center gap-3 border-b border-zinc-100 px-4 py-2 last:border-0"
+            >
+              {rs.song.artwork ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={rs.song.artwork} alt="" className="h-9 w-9 rounded-lg object-cover" />
+              ) : (
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2">
+                  🎵
+                </span>
+              )}
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">{rs.song.title}</span>
+                <span className="block truncate text-xs text-zinc-500">{rs.song.artist}</span>
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
 
       {/* 비용 요약 */}
       <section className="mt-5 grid grid-cols-2 gap-2">

@@ -1,0 +1,226 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+interface Song {
+  id: string
+  title: string
+  artist: string | null
+  link: string | null
+  artwork: string | null
+  rehearsals: { rehearsalId: string }[]
+}
+
+interface SearchResult {
+  title: string
+  artist: string
+  artwork: string | null
+}
+
+export default function SongsPage() {
+  const [songs, setSongs] = useState<Song[]>([])
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [adding, setAdding] = useState('')
+  const [manualMode, setManualMode] = useState(false)
+  const [manualTitle, setManualTitle] = useState('')
+  const [manualArtist, setManualArtist] = useState('')
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const load = useCallback(async () => {
+    const res = await fetch('/api/songs')
+    const data = await res.json()
+    setSongs(data.songs)
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  // 검색어 입력 → 0.4초 뒤 iTunes 검색
+  useEffect(() => {
+    if (debounce.current) clearTimeout(debounce.current)
+    if (!query.trim()) {
+      setResults([])
+      return
+    }
+    setSearching(true)
+    debounce.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/songs/search?q=${encodeURIComponent(query)}`)
+        const data = await res.json()
+        setResults(data.results)
+      } finally {
+        setSearching(false)
+      }
+    }, 400)
+  }, [query])
+
+  const addSong = async (s: { title: string; artist?: string; artwork?: string | null }) => {
+    setAdding(s.title)
+    try {
+      await fetch('/api/songs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(s),
+      })
+      setQuery('')
+      setResults([])
+      setManualTitle('')
+      setManualArtist('')
+      await load()
+    } finally {
+      setAdding('')
+    }
+  }
+
+  const remove = async (song: Song) => {
+    if (!confirm(`"${song.title}" 곡을 삭제할까요?`)) return
+    await fetch(`/api/songs/${song.id}`, { method: 'DELETE' })
+    await load()
+  }
+
+  const registered = new Set(songs.map(s => `${s.title}|${s.artist ?? ''}`))
+
+  return (
+    <main className="px-4 pt-8">
+      <h1 className="text-2xl font-bold">🎵 합주곡</h1>
+      <p className="mt-1 text-sm text-zinc-500">
+        우리 밴드가 연습하는 곡들 — 검색해서 바로 추가하세요
+      </p>
+
+      {/* 곡 검색 */}
+      <div className="mt-5">
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="곡 제목이나 가수로 검색 (예: 체리필터)"
+          className="w-full rounded-xl bg-surface px-4 py-3 text-base outline-none focus:ring-2 focus:ring-brand"
+        />
+        {searching && <p className="mt-2 text-sm text-zinc-500">검색 중…</p>}
+        {results.length > 0 && (
+          <div className="mt-2 overflow-hidden rounded-2xl bg-surface">
+            {results.map((r, i) => {
+              const dup = registered.has(`${r.title}|${r.artist}`)
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  disabled={dup || adding === r.title}
+                  onClick={() => addSong(r)}
+                  className="flex w-full items-center gap-3 border-b border-zinc-100 px-3 py-2.5 text-left last:border-0 active:bg-surface-2 disabled:opacity-40"
+                >
+                  {r.artwork ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={r.artwork}
+                      alt=""
+                      className="h-10 w-10 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-2">
+                      🎵
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{r.title}</span>
+                    <span className="block truncate text-sm text-zinc-500">
+                      {r.artist}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-sm font-semibold text-brand">
+                    {dup ? '추가됨' : '+ 추가'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setManualMode(v => !v)}
+          className="mt-2 text-sm text-zinc-500 underline"
+        >
+          {manualMode ? '직접 입력 닫기' : '검색에 없어요? 직접 입력'}
+        </button>
+        {manualMode && (
+          <div className="mt-2 space-y-2 rounded-2xl bg-surface p-3">
+            <input
+              type="text"
+              value={manualTitle}
+              onChange={e => setManualTitle(e.target.value)}
+              placeholder="곡 제목"
+              className="w-full rounded-xl bg-surface-2 px-4 py-2.5 outline-none focus:ring-2 focus:ring-brand"
+            />
+            <input
+              type="text"
+              value={manualArtist}
+              onChange={e => setManualArtist(e.target.value)}
+              placeholder="아티스트 (선택)"
+              className="w-full rounded-xl bg-surface-2 px-4 py-2.5 outline-none focus:ring-2 focus:ring-brand"
+            />
+            <button
+              type="button"
+              disabled={!manualTitle.trim()}
+              onClick={() => addSong({ title: manualTitle, artist: manualArtist })}
+              className="w-full rounded-xl bg-brand py-2.5 font-semibold text-white disabled:opacity-40"
+            >
+              추가
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 등록된 곡 목록 */}
+      <section className="mt-6">
+        <h2 className="text-base font-semibold">
+          연습곡 목록 <span className="text-zinc-500">({songs.length})</span>
+        </h2>
+        {songs.length === 0 ? (
+          <p className="mt-2 rounded-2xl bg-surface p-6 text-center text-sm text-zinc-500">
+            아직 등록된 곡이 없어요.
+            <br />위에서 검색해서 추가해보세요!
+          </p>
+        ) : (
+          <div className="mt-2 overflow-hidden rounded-2xl bg-surface">
+            {songs.map(s => (
+              <div
+                key={s.id}
+                className="flex items-center gap-3 border-b border-zinc-100 px-3 py-2.5 last:border-0"
+              >
+                {s.artwork ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={s.artwork}
+                    alt=""
+                    className="h-11 w-11 rounded-lg object-cover"
+                  />
+                ) : (
+                  <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-surface-2">
+                    🎵
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{s.title}</span>
+                  <span className="block truncate text-sm text-zinc-500">
+                    {s.artist}
+                    {s.rehearsals.length > 0 && ` · 합주 ${s.rehearsals.length}회`}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => remove(s)}
+                  className="shrink-0 px-2 text-sm text-zinc-400"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
+  )
+}

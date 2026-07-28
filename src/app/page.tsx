@@ -20,7 +20,10 @@ export default async function Home() {
     where: { date: { gte: cutoff } },
     orderBy: { date: 'asc' },
     take: 3,
-    include: { attendances: { include: { member: true } } },
+    include: {
+      attendances: { include: { member: true } },
+      songs: { include: { song: true } },
+    },
   })
   const recent = await prisma.rehearsal.findMany({
     where: { date: { lt: cutoff } },
@@ -72,6 +75,45 @@ export default async function Home() {
                     {r.hours}시간
                     {r.memo && ` · ${r.memo}`}
                   </div>
+                  {r.attendances.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {r.attendances.map(a => (
+                        <span
+                          key={a.id}
+                          className="rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-medium text-brand"
+                        >
+                          {a.member.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {r.songs.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {r.songs.map(rs => (
+                        <div
+                          key={rs.id}
+                          className="flex items-center gap-2 text-sm text-zinc-700"
+                        >
+                          {rs.song.artwork ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={rs.song.artwork}
+                              alt=""
+                              className="h-6 w-6 rounded object-cover"
+                            />
+                          ) : (
+                            <span>🎵</span>
+                          )}
+                          <span className="truncate">
+                            {rs.song.title}
+                            {rs.song.artist && (
+                              <span className="text-zinc-400"> · {rs.song.artist}</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </Link>
               )
             })}
@@ -79,22 +121,38 @@ export default async function Home() {
         )}
       </section>
 
-      {/* 멤버 */}
-      <section className="mt-4 rounded-2xl bg-surface p-4">
-        <h2 className="text-sm font-semibold text-zinc-500">멤버</h2>
-        <div className="mt-2 flex flex-wrap gap-2">
+      {/* 멤버 프로필 */}
+      <section className="mt-4">
+        <h2 className="text-base font-semibold">멤버</h2>
+        <div className="mt-2 grid grid-cols-3 gap-2">
           {members.map(m => (
-            <span
+            <Link
               key={m.id}
-              className={`rounded-full px-3 py-1 text-sm ${
-                m.isGuest ? 'bg-surface-2 text-zinc-500' : 'bg-brand/15 text-brand'
-              }`}
+              href={`/members/${m.id}`}
+              className="flex flex-col items-center rounded-2xl bg-surface p-3 active:bg-surface-2"
             >
-              {m.name}
-              {m.isGuest && ' (초청객원)'}
-            </span>
+              {m.photo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/api/photos/${m.photo}`}
+                  alt={m.name}
+                  className="h-16 w-16 rounded-full object-cover"
+                />
+              ) : (
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/10 text-xl font-bold text-brand">
+                  {m.name[0]}
+                </span>
+              )}
+              <span className="mt-2 text-sm font-semibold">{m.name}</span>
+              <span className="mt-0.5 min-h-4 text-center text-xs text-zinc-500">
+                {m.roles ? m.roles.split(',').join(' · ') : '역할 미정'}
+              </span>
+            </Link>
           ))}
         </div>
+        <p className="mt-1.5 text-xs text-zinc-400">
+          프로필을 탭하면 사진과 역할을 바꿀 수 있어요
+        </p>
       </section>
 
       {/* 최근 정산 */}

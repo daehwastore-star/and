@@ -14,6 +14,8 @@ model Member {
   isGuest     Boolean @default(false) // 객원 여부
   active      Boolean @default(true)
   sortOrder   Int     @default(0)
+  roles       String? // 담당 역할 (쉼표 구분: "보컬,일렉기타")
+  photo       String? // 프로필 사진 파일명 (uploads/ 폴더)
 
   attendances Attendance[]
   votes       PollVote[]
@@ -30,6 +32,31 @@ model Rehearsal {
   createdAt      DateTime @default(now())
 
   attendances Attendance[]
+  songs       RehearsalSong[]
+}
+
+// 합주곡
+model Song {
+  id        String   @id @default(cuid())
+  title     String
+  artist    String?
+  link      String? // 유튜브/악보 링크
+  artwork   String? // 앨범 커버 이미지 URL (iTunes)
+  createdAt DateTime @default(now())
+
+  rehearsals RehearsalSong[]
+}
+
+// 합주별 연습곡
+model RehearsalSong {
+  id          String @id @default(cuid())
+  rehearsalId String
+  songId      String
+
+  rehearsal Rehearsal @relation(fields: [rehearsalId], references: [id], onDelete: Cascade)
+  song      Song      @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([rehearsalId, songId])
 }
 
 // 합주별 멤버 참석 정보

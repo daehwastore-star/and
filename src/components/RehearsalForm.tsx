@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { calcSettlement, won, type AttendeeInput } from '@/lib/settlement'
 import { localInputToKstIso, dateToLocalInput } from '@/lib/format'
 
@@ -10,6 +10,13 @@ export interface Member {
   isGuest: boolean
 }
 
+interface SongItem {
+  id: string
+  title: string
+  artist: string | null
+  artwork: string | null
+}
+
 export interface RehearsalInitial {
   date: string
   hours: number
@@ -17,6 +24,7 @@ export interface RehearsalInitial {
   afterPartyCost: number
   memo: string | null
   attendances: { memberId: string; late: boolean; afterParty: boolean }[]
+  songIds?: string[]
 }
 
 interface AttendState {
@@ -41,6 +49,7 @@ export default function RehearsalForm({
     afterPartyCost: number
     memo: string
     attendees: { memberId: string; late: boolean; afterParty: boolean }[]
+    songIds: string[]
   }) => Promise<void>
 }) {
   const [date, setDate] = useState(initial ? dateToLocalInput(initial.date) : '')
@@ -58,8 +67,19 @@ export default function RehearsalForm({
     }
     return st
   })
+  const [songs, setSongs] = useState<SongItem[]>([])
+  const [songSel, setSongSel] = useState<Set<string>>(
+    () => new Set(initial?.songIds ?? []),
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetch('/api/songs')
+      .then(r => r.json())
+      .then(d => setSongs(d.songs))
+      .catch(() => {})
+  }, [])
 
   const attendees: AttendeeInput[] = useMemo(
     () =>
@@ -108,6 +128,7 @@ export default function RehearsalForm({
           late: a.late,
           afterParty: a.afterParty,
         })),
+        songIds: [...songSel],
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : '저장 실패')
@@ -189,7 +210,6 @@ export default function RehearsalForm({
                     {st.attending ? '✓' : ''}
                   </span>
                   {m.name}
-                  {m.isGuest && <span className="text-xs text-zinc-500">초청객원</span>}
                 </button>
                 <button
                   type="button"
@@ -243,6 +263,45 @@ export default function RehearsalForm({
           className="mt-1 w-full rounded-xl bg-surface px-4 py-3 text-base outline-none focus:ring-2 focus:ring-brand"
         />
       </div>
+
+      {songs.length > 0 && (
+        <div>
+          <label className="text-sm font-semibold text-zinc-700">연습한 곡</label>
+          <div className="mt-1 space-y-1.5">
+            {songs.map(s => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() =>
+                  setSongSel(prev => {
+                    const next = new Set(prev)
+                    if (next.has(s.id)) next.delete(s.id)
+                    else next.add(s.id)
+                    return next
+                  })
+                }
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left ${
+                  songSel.has(s.id) ? 'bg-brand/15 ring-1 ring-brand/40' : 'bg-surface'
+                }`}
+              >
+                {s.artwork ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={s.artwork} alt="" className="h-9 w-9 rounded-lg object-cover" />
+                ) : (
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2">
+                    🎵
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{s.title}</span>
+                  <span className="block truncate text-xs text-zinc-500">{s.artist}</span>
+                </span>
+                {songSel.has(s.id) && <span className="shrink-0 font-bold text-brand">✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 실시간 정산 미리보기 */}
       {attendees.length > 0 && (roomCost > 0 || afterPartyCost > 0) && (

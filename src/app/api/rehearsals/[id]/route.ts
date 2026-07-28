@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { parseAttendees } from '@/lib/parse'
+import { parseAttendees, parseSongIds } from '@/lib/parse'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const rehearsal = await prisma.rehearsal.findUnique({
     where: { id },
-    include: { attendances: { include: { member: true } } },
+    include: {
+      attendances: { include: { member: true } },
+      songs: { include: { song: true } },
+    },
   })
   if (!rehearsal) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ rehearsal })
@@ -46,10 +49,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
   }
 
+  // 연습곡 목록이 오면 전체 교체
+  if (Array.isArray(body.songIds)) {
+    const songIds = parseSongIds(body.songIds)
+    await prisma.rehearsalSong.deleteMany({ where: { rehearsalId: id } })
+    if (songIds.length > 0) {
+      await prisma.rehearsalSong.createMany({
+        data: songIds.map(songId => ({ rehearsalId: id, songId })),
+      })
+    }
+  }
+
   const rehearsal = await prisma.rehearsal.update({
     where: { id },
     data,
-    include: { attendances: { include: { member: true } } },
+    include: {
+      attendances: { include: { member: true } },
+      songs: { include: { song: true } },
+    },
   })
   return NextResponse.json({ ok: true, rehearsal })
 }

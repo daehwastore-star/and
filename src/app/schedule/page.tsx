@@ -14,7 +14,10 @@ function ddayLabel(n: number): string {
 export default async function SchedulePage() {
   const rehearsals = await prisma.rehearsal.findMany({
     orderBy: { date: 'asc' },
-    include: { attendances: { include: { member: true } } },
+    include: {
+      attendances: { include: { member: true } },
+      songs: { include: { song: true } },
+    },
   })
 
   const now = new Date()
@@ -70,6 +73,18 @@ export default async function SchedulePage() {
                     {r.attendances.length > 0 &&
                       ` · ${r.attendances.map(a => a.member.name).join(', ')}`}
                   </div>
+                  {r.songs.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {r.songs.map(rs => (
+                        <span
+                          key={rs.id}
+                          className="rounded-full bg-surface-2 px-2.5 py-0.5 text-xs text-zinc-700"
+                        >
+                          🎵 {rs.song.title}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </Link>
               )
             })}

@@ -1,3 +1,8 @@
+export function parseSongIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((s): s is string => typeof s === 'string')
+}
+
 export interface AttendeeBody {
   memberId: string
   late: boolean

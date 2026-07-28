@@ -6,27 +6,54 @@ import Calendar from '@/components/Calendar'
 
 const HOURS = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 
+interface Member {
+  id: string
+  name: string
+  isGuest: boolean
+}
+interface Song {
+  id: string
+  title: string
+  artist: string | null
+  artwork: string | null
+}
+
 export default function NewSchedulePage() {
   const router = useRouter()
   const [eventDates, setEventDates] = useState<string[]>([])
-  const [day, setDay] = useState<string | null>(null) // 'YYYY-MM-DD'
+  const [members, setMembers] = useState<Member[]>([])
+  const [songs, setSongs] = useState<Song[]>([])
+  const [day, setDay] = useState<string | null>(null)
   const [hour, setHour] = useState<number | null>(null)
   const [minute, setMinute] = useState<0 | 30>(0)
   const [hours, setHours] = useState(2)
   const [memo, setMemo] = useState('')
+  const [who, setWho] = useState<Set<string>>(new Set())
+  const [songSel, setSongSel] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     fetch('/api/rehearsals')
       .then(r => r.json())
-      .then(d =>
-        setEventDates(
-          (d.rehearsals as { date: string }[]).map(r => r.date),
-        ),
-      )
+      .then(d => setEventDates((d.rehearsals as { date: string }[]).map(r => r.date)))
+      .catch(() => {})
+    fetch('/api/members')
+      .then(r => r.json())
+      .then(d => setMembers(d.members))
+      .catch(() => {})
+    fetch('/api/songs')
+      .then(r => r.json())
+      .then(d => setSongs(d.songs))
       .catch(() => {})
   }, [])
+
+  const toggle = (set: Set<string>, id: string) => {
+    const next = new Set(set)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  }
 
   const submit = async () => {
     setError('')
@@ -42,7 +69,8 @@ export default function NewSchedulePage() {
           date: `${day}T${pad(hour)}:${pad(minute)}:00+09:00`,
           hours,
           memo: memo.trim(),
-          attendees: [],
+          attendees: [...who].map(memberId => ({ memberId })),
+          songIds: [...songSel],
         }),
       })
       const data = await res.json()
@@ -120,6 +148,66 @@ export default function NewSchedulePage() {
         </div>
 
         <div>
+          <label className="text-sm font-semibold text-zinc-700">누가 오나요?</label>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {members.map(m => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setWho(prev => toggle(prev, m.id))}
+                className={`rounded-full px-3.5 py-2 text-sm ${
+                  who.has(m.id)
+                    ? 'bg-brand font-semibold text-white'
+                    : 'bg-surface text-zinc-700'
+                }`}
+              >
+                {m.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-zinc-700">연습할 곡</label>
+          {songs.length === 0 ? (
+            <p className="mt-1 rounded-xl bg-surface p-3 text-sm text-zinc-500">
+              등록된 곡이 없어요 — 합주곡 탭에서 곡을 먼저 추가해주세요
+            </p>
+          ) : (
+            <div className="mt-1 space-y-1.5">
+              {songs.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSongSel(prev => toggle(prev, s.id))}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left ${
+                    songSel.has(s.id)
+                      ? 'bg-brand/15 ring-1 ring-brand/40'
+                      : 'bg-surface'
+                  }`}
+                >
+                  {s.artwork ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.artwork} alt="" className="h-9 w-9 rounded-lg object-cover" />
+                  ) : (
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2">
+                      🎵
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{s.title}</span>
+                    <span className="block truncate text-xs text-zinc-500">{s.artist}</span>
+                  </span>
+                  {songSel.has(s.id) && (
+                    <span className="shrink-0 font-bold text-brand">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
           <label className="text-sm font-semibold text-zinc-700">장소 / 메모</label>
           <input
             type="text"
@@ -134,6 +222,8 @@ export default function NewSchedulePage() {
           <p className="rounded-xl bg-brand/10 px-4 py-3 text-sm font-semibold text-brand">
             {day.replaceAll('-', '. ')} · {hour}시{minute === 30 ? ' 30분' : ''} 시작 ·{' '}
             {hours}시간
+            {who.size > 0 && ` · ${who.size}명`}
+            {songSel.size > 0 && ` · ${songSel.size}곡`}
           </p>
         )}
 
