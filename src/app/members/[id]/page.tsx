@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-const ROLES = ['보컬', '드럼', '베이스', '일렉기타', '어쿠스틱기타', '키보드']
+const ROLES = ['보컬', '드럼', '베이스', '일렉기타', '어쿠스틱기타', '키보드', '매니저']
 
 interface Member {
   id: string
