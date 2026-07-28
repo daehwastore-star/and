@@ -23,6 +23,6 @@ for i in 1 2 3; do
 done
 [ -f .next/BUILD_ID ] || { echo "❌ 빌드 실패, 재시작 건너뜀"; exit 1; }
 
-pm2 restart band 2>/dev/null || pm2 start npm --name band -- start -- -p 3001
+pm2 restart band 2>/dev/null || pm2 start npm --name band -- start -- -p 3002
 pm2 save
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 배포 완료 ✅"
