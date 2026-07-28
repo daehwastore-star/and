@@ -17,8 +17,9 @@ export default async function Home() {
   const members = await getMembers()
   const now = new Date()
   const cutoff = new Date(now.getTime() - 12 * 60 * 60 * 1000)
+  // 공연은 상단 카운트다운 배너에 나오므로 목록에서는 합주만 (중복 방지)
   const upcoming = await prisma.rehearsal.findMany({
-    where: { date: { gte: cutoff } },
+    where: { date: { gte: cutoff }, type: '합주' },
     orderBy: { date: 'asc' },
     take: 3,
     include: {
@@ -206,25 +207,31 @@ export default async function Home() {
                 <Link
                   key={s.id}
                   href={`/songs/${s.id}`}
-                  className="overflow-hidden rounded-2xl bg-surface active:bg-surface-2"
+                  className="flex items-center gap-2.5 rounded-2xl bg-surface p-2.5 active:bg-surface-2"
                 >
                   {s.artwork ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.artwork} alt="" className="aspect-square w-full object-cover" />
+                    <img
+                      src={s.artwork}
+                      alt=""
+                      className="h-11 w-11 shrink-0 rounded-lg object-cover"
+                    />
                   ) : (
-                    <span className="flex aspect-square w-full items-center justify-center bg-surface-2 text-3xl">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-2">
                       🎵
                     </span>
                   )}
-                  <div className="p-2.5">
+                  <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{s.title}</span>
                     <span className="block truncate text-xs text-zinc-500">{s.artist}</span>
-                    <span className="mt-0.5 block min-h-4 text-xs">
-                      {parts.map(p => (
-                        <span key={p}>{partEmoji(p)}</span>
-                      ))}
-                    </span>
-                  </div>
+                    {parts.length > 0 && (
+                      <span className="block text-xs">
+                        {parts.map(p => (
+                          <span key={p}>{partEmoji(p)}</span>
+                        ))}
+                      </span>
+                    )}
+                  </span>
                 </Link>
               )
             })}
