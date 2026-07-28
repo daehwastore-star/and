@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
+import { partEmoji } from '@/lib/sheets'
 
 interface Song {
   id: string
@@ -9,6 +11,7 @@ interface Song {
   link: string | null
   artwork: string | null
   rehearsals: { rehearsalId: string }[]
+  sheets: { id: string; part: string }[]
 }
 
 interface SearchResult {
@@ -75,19 +78,13 @@ export default function SongsPage() {
     }
   }
 
-  const remove = async (song: Song) => {
-    if (!confirm(`"${song.title}" 곡을 삭제할까요?`)) return
-    await fetch(`/api/songs/${song.id}`, { method: 'DELETE' })
-    await load()
-  }
-
   const registered = new Set(songs.map(s => `${s.title}|${s.artist ?? ''}`))
 
   return (
     <main className="px-4 pt-8">
       <h1 className="text-2xl font-bold">🎵 합주곡</h1>
       <p className="mt-1 text-sm text-zinc-500">
-        우리 밴드가 연습하는 곡들 — 검색해서 바로 추가하세요
+        곡을 탭하면 파트별 악보를 올리고 볼 수 있어요
       </p>
 
       {/* 곡 검색 */}
@@ -185,39 +182,44 @@ export default function SongsPage() {
           </p>
         ) : (
           <div className="mt-2 overflow-hidden rounded-2xl bg-surface">
-            {songs.map(s => (
-              <div
-                key={s.id}
-                className="flex items-center gap-3 border-b border-zinc-100 px-3 py-2.5 last:border-0"
-              >
-                {s.artwork ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={s.artwork}
-                    alt=""
-                    className="h-11 w-11 rounded-lg object-cover"
-                  />
-                ) : (
-                  <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-surface-2">
-                    🎵
-                  </span>
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{s.title}</span>
-                  <span className="block truncate text-sm text-zinc-500">
-                    {s.artist}
-                    {s.rehearsals.length > 0 && ` · 합주 ${s.rehearsals.length}회`}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => remove(s)}
-                  className="shrink-0 px-2 text-sm text-zinc-400"
+            {songs.map(s => {
+              const parts = [...new Set(s.sheets.map(x => x.part))]
+              return (
+                <Link
+                  key={s.id}
+                  href={`/songs/${s.id}`}
+                  className="flex items-center gap-3 border-b border-zinc-100 px-3 py-2.5 last:border-0 active:bg-surface-2"
                 >
-                  ✕
-                </button>
-              </div>
-            ))}
+                  {s.artwork ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={s.artwork}
+                      alt=""
+                      className="h-11 w-11 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-surface-2">
+                      🎵
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{s.title}</span>
+                    <span className="block truncate text-sm text-zinc-500">
+                      {s.artist}
+                      {s.rehearsals.length > 0 && ` · 합주 ${s.rehearsals.length}회`}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-sm">
+                    {parts.length > 0 ? (
+                      parts.map(p => <span key={p}>{partEmoji(p)}</span>)
+                    ) : (
+                      <span className="text-xs text-zinc-400">악보 없음</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-zinc-400">›</span>
+                </Link>
+              )
+            })}
           </div>
         )}
       </section>

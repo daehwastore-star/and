@@ -58,6 +58,20 @@ model Song {
   createdAt DateTime @default(now())
 
   rehearsals RehearsalSong[]
+  sheets     SheetMusic[]
+}
+
+// 곡별 악보 파일 (파트별 업로드)
+model SheetMusic {
+  id        String   @id @default(cuid())
+  songId    String
+  part      String // 보컬/드럼/베이스/일렉기타/어쿠스틱기타/키보드/기타
+  file      String // uploads/ 폴더 파일명
+  filename  String // 업로드한 원본 파일명
+  uploader  String? // 올린 사람 이름
+  createdAt DateTime @default(now())
+
+  song Song @relation(fields: [songId], references: [id], onDelete: Cascade)
 }
 
 // 합주별 연습곡

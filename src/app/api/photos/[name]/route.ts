@@ -9,6 +9,7 @@ const MIME: Record<string, string> = {
   '.webp': 'image/webp',
   '.gif': 'image/gif',
   '.heic': 'image/heic',
+  '.pdf': 'application/pdf', // 악보 파일
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ name: string }> }) {

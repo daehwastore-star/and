@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { getMembers } from '@/lib/members'
 import { fmtDateTime, kstDday } from '@/lib/format'
-import { calcSettlement, won } from '@/lib/settlement'
+import { partEmoji } from '@/lib/sheets'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,12 +25,12 @@ export default async function Home() {
       songs: { include: { song: true } },
     },
   })
-  const recent = await prisma.rehearsal.findMany({
-    where: { date: { lt: cutoff } },
-    orderBy: { date: 'desc' },
-    take: 3,
-    include: { attendances: { include: { member: true } } },
+  const songs = await prisma.song.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 5,
+    include: { sheets: { select: { part: true } } },
   })
+  const songTotal = await prisma.song.count()
 
   return (
     <main className="px-4 pt-8">
@@ -155,46 +155,45 @@ export default async function Home() {
         </p>
       </section>
 
-      {/* 최근 정산 */}
+      {/* 합주곡 */}
       <section className="mt-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">최근 합주 정산</h2>
-          <Link href="/settle/new" className="text-sm text-brand">
-            + 새 정산
+          <h2 className="text-base font-semibold">합주곡</h2>
+          <Link href="/songs" className="text-sm text-brand">
+            전체 보기 ({songTotal}) ›
           </Link>
         </div>
-        {recent.length === 0 ? (
+        {songs.length === 0 ? (
           <p className="mt-2 rounded-2xl bg-surface p-4 text-sm text-zinc-500">
-            아직 정산 기록이 없어요.
+            아직 등록된 곡이 없어요. 합주곡 탭에서 추가해보세요!
           </p>
         ) : (
-          <div className="mt-2 space-y-2">
-            {recent.map(r => {
-              const result = calcSettlement(
-                r.roomCost,
-                r.hours,
-                r.afterPartyCost,
-                r.attendances.map(a => ({
-                  memberId: a.memberId,
-                  name: a.member.name,
-                  late: a.late,
-                  afterParty: a.afterParty,
-                })),
-              )
+          <div className="mt-2 overflow-hidden rounded-2xl bg-surface">
+            {songs.map(s => {
+              const parts = [...new Set(s.sheets.map(x => x.part))]
               return (
                 <Link
-                  key={r.id}
-                  href={`/settle/${r.id}`}
-                  className="block rounded-2xl bg-surface p-4 active:bg-surface-2"
+                  key={s.id}
+                  href={`/songs/${s.id}`}
+                  className="flex items-center gap-3 border-b border-zinc-100 px-3 py-2.5 last:border-0 active:bg-surface-2"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">{fmtDateTime(r.date)}</span>
-                    <span className="text-sm text-zinc-500">{r.hours}시간</span>
-                  </div>
-                  <div className="mt-1 text-sm text-zinc-500">
-                    {result.attendeeCount}명 참석 · 합주비 {won(r.roomCost)}
-                    {r.afterPartyCost > 0 && ` · 뒤풀이 ${won(r.afterPartyCost)}`}
-                  </div>
+                  {s.artwork ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.artwork} alt="" className="h-10 w-10 rounded-lg object-cover" />
+                  ) : (
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-2">
+                      🎵
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{s.title}</span>
+                    <span className="block truncate text-xs text-zinc-500">{s.artist}</span>
+                  </span>
+                  <span className="shrink-0 text-sm">
+                    {parts.map(p => (
+                      <span key={p}>{partEmoji(p)}</span>
+                    ))}
+                  </span>
                 </Link>
               )
             })}

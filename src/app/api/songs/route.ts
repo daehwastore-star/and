@@ -4,7 +4,10 @@ import { prisma } from '@/lib/prisma'
 export async function GET() {
   const songs = await prisma.song.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { rehearsals: { select: { rehearsalId: true } } },
+    include: {
+      rehearsals: { select: { rehearsalId: true } },
+      sheets: { select: { id: true, part: true } },
+    },
   })
   return NextResponse.json({ songs })
 }
