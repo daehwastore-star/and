@@ -91,7 +91,7 @@ export default async function Home() {
               }`}
             >
               {m.name}
-              {m.isGuest && ' (객원)'}
+              {m.isGuest && ' (초청객원)'}
             </span>
           ))}
         </div>

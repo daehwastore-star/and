@@ -189,7 +189,7 @@ export default function RehearsalForm({
                     {st.attending ? '✓' : ''}
                   </span>
                   {m.name}
-                  {m.isGuest && <span className="text-xs text-zinc-500">객원</span>}
+                  {m.isGuest && <span className="text-xs text-zinc-500">초청객원</span>}
                 </button>
                 <button
                   type="button"
