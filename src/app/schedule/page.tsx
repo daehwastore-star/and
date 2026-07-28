@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { fmtDateTime, kstDday } from '@/lib/format'
 import Calendar from '@/components/Calendar'
+import CopyButton from '@/components/CopyButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,20 +40,28 @@ export default async function SchedulePage() {
       </div>
 
       {/* 단골 합주실 예약 */}
-      <a
-        href="https://m.booking.naver.com/booking/10/bizes/1415457?theme=place&lang=ko"
-        target="_blank"
-        rel="noreferrer"
-        className="mt-4 flex items-center justify-between rounded-2xl bg-emerald-500/10 p-4 active:bg-emerald-500/20"
-      >
-        <span>
-          <span className="block font-semibold text-emerald-700">
-            🎹 웨이브랩 합주실 2호점 예약
+      <div className="mt-4 overflow-hidden rounded-2xl bg-emerald-500/10">
+        <a
+          href="https://m.booking.naver.com/booking/10/bizes/1415457?theme=place&lang=ko"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center justify-between p-4 active:bg-emerald-500/20"
+        >
+          <span>
+            <span className="block font-semibold text-emerald-700">
+              🎹 웨이브랩 합주실 2호점 예약
+            </span>
+            <span className="block text-sm text-emerald-600">네이버 예약 바로가기</span>
           </span>
-          <span className="block text-sm text-emerald-600">네이버 예약 바로가기</span>
-        </span>
-        <span className="text-emerald-600">›</span>
-      </a>
+          <span className="text-emerald-600">›</span>
+        </a>
+        <div className="flex items-center justify-between gap-2 border-t border-emerald-500/20 px-4 py-2.5">
+          <span className="truncate text-sm text-emerald-700">
+            📍 서울특별시 마포구 월드컵로 37
+          </span>
+          <CopyButton text="서울특별시 마포구 월드컵로 37" />
+        </div>
+      </div>
 
       {/* 다가오는 일정 피드 */}
       <section className="mt-5">
