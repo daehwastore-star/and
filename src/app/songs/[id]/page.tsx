@@ -19,6 +19,7 @@ interface Song {
   title: string
   artist: string | null
   artwork: string | null
+  inRepertoire: boolean
   sheets: Sheet[]
 }
 interface Member {
@@ -125,6 +126,38 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
           <p className="truncate text-sm text-zinc-500">{song.artist}</p>
         </div>
       </div>
+
+      {/* 정식 합주곡 / 위시 전용 전환 */}
+      <div className="mt-4 flex gap-2">
+        {([
+          { value: true, label: '🎸 정식 합주곡' },
+          { value: false, label: '🙏 위시 전용' },
+        ] as const).map(opt => (
+          <button
+            key={String(opt.value)}
+            type="button"
+            onClick={async () => {
+              if (song.inRepertoire === opt.value) return
+              await fetch(`/api/songs/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ inRepertoire: opt.value }),
+              })
+              await load()
+            }}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-semibold ${
+              song.inRepertoire === opt.value
+                ? 'bg-brand text-white'
+                : 'bg-surface text-zinc-500'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-xs text-zinc-500">
+        위시 전용으로 바꾸면 연습곡 목록에서 빠지고 위시리스트에만 남아요
+      </p>
 
       {/* 악보 목록 */}
       <section className="mt-6">

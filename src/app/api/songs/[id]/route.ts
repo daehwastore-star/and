@@ -18,6 +18,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body.title === 'string' && body.title.trim()) data.title = body.title.trim()
   if (typeof body.artist === 'string') data.artist = body.artist.trim() || null
   if (typeof body.link === 'string') data.link = body.link.trim() || null
+  if (typeof body.inRepertoire === 'boolean') data.inRepertoire = body.inRepertoire
   const song = await prisma.song.update({ where: { id }, data })
   return NextResponse.json({ ok: true, song })
 }
