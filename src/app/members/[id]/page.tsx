@@ -20,6 +20,12 @@ interface Song {
   artwork: string | null
 }
 
+interface SearchResult {
+  title: string
+  artist: string
+  artwork: string | null
+}
+
 export default function MemberProfilePage({
   params,
 }: {
@@ -35,6 +41,53 @@ export default function MemberProfilePage({
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  // 새 희망곡 검색
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [addingTitle, setAddingTitle] = useState('')
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 검색어 입력 → 0.4초 뒤 iTunes 검색
+  useEffect(() => {
+    if (debounce.current) clearTimeout(debounce.current)
+    if (!query.trim()) {
+      setResults([])
+      return
+    }
+    setSearching(true)
+    debounce.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/songs/search?q=${encodeURIComponent(query)}`)
+        const data = await res.json()
+        setResults(data.results)
+      } finally {
+        setSearching(false)
+      }
+    }, 400)
+  }, [query])
+
+  // 검색 결과 → 합주곡에 등록 + 내 위시에 바로 체크
+  const addWishSong = async (r: SearchResult) => {
+    setAddingTitle(r.title)
+    try {
+      const res = await fetch('/api/songs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(r),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '추가 실패')
+      setSongs(prev => [data.song, ...prev])
+      setWishSel(prev => new Set(prev).add(data.song.id))
+      setQuery('')
+      setResults([])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '추가 실패')
+    } finally {
+      setAddingTitle('')
+    }
+  }
 
   const load = useCallback(async () => {
     const [res, songRes] = await Promise.all([
@@ -179,6 +232,48 @@ export default function MemberProfilePage({
           🙏 합주하고 싶은 곡{' '}
           <span className="font-normal text-zinc-500">(여러 개 가능)</span>
         </h2>
+
+        {/* 새 희망곡 검색 */}
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="🔍 새 희망곡 검색 (예: 체리필터)"
+          className="mt-2 w-full rounded-xl bg-surface px-4 py-3 text-base outline-none focus:ring-2 focus:ring-brand"
+        />
+        {searching && <p className="mt-1 text-xs text-zinc-500">검색 중…</p>}
+        {results.length > 0 && (
+          <div className="mt-2 overflow-hidden rounded-2xl bg-surface">
+            {results.map((r, i) => {
+              const dup = songs.some(s => s.title === r.title && (s.artist ?? '') === r.artist)
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  disabled={dup || addingTitle === r.title}
+                  onClick={() => addWishSong(r)}
+                  className="flex w-full items-center gap-3 border-b border-zinc-100 px-3 py-2.5 text-left last:border-0 active:bg-surface-2 disabled:opacity-40"
+                >
+                  {r.artwork ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={r.artwork} alt="" className="h-9 w-9 rounded-lg object-cover" />
+                  ) : (
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2">
+                      🎵
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{r.title}</span>
+                    <span className="block truncate text-xs text-zinc-500">{r.artist}</span>
+                  </span>
+                  <span className="shrink-0 text-sm font-semibold text-brand">
+                    {dup ? '이미 있음' : '+ 희망곡'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
         {songs.length === 0 ? (
           <p className="mt-2 rounded-xl bg-surface p-3 text-sm text-zinc-500">
             등록된 곡이 없어요 — 합주곡 탭에서 곡을 먼저 추가해주세요
