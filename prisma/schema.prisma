@@ -63,6 +63,22 @@ model JournalEntry {
   rehearsal Rehearsal? @relation(fields: [rehearsalId], references: [id], onDelete: SetNull)
 }
 
+// 푸시 알림 구독 (기기별)
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  memberId  String? // 어느 멤버의 기기인지 (선택)
+  createdAt DateTime @default(now())
+}
+
+// 앱 설정 저장소 (VAPID 키, 발송 기록 등)
+model AppConfig {
+  key   String @id
+  value String
+}
+
 // 합주곡
 model Song {
   id        String   @id @default(cuid())

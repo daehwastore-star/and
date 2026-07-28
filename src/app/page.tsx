@@ -4,6 +4,7 @@ import { getMembers } from '@/lib/members'
 import { fmtDateTime, fmtDate, kstDday } from '@/lib/format'
 import { isVideoFile } from '@/lib/media'
 import MyIdentity from '@/components/MyIdentity'
+import PushSetup from '@/components/PushSetup'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +51,7 @@ export default async function Home() {
         <h1 className="text-2xl font-bold">🎸 밴드 합주 매니저</h1>
         <MyIdentity />
       </div>
+      <PushSetup />
 
       {/* 공연 카운트다운 */}
       {nextGig && (
