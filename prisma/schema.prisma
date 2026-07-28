@@ -70,6 +70,7 @@ model Song {
   artist    String?
   link      String? // 유튜브/악보 링크
   artwork   String? // 앨범 커버 이미지 URL (iTunes)
+  inRepertoire Boolean @default(true) // true=정식 합주곡, false=위시 전용 (희망곡)
   createdAt DateTime @default(now())
 
   rehearsals RehearsalSong[]

@@ -32,11 +32,12 @@ export default async function Home() {
     orderBy: { date: 'asc' },
   })
   const songs = await prisma.song.findMany({
+    where: { inRepertoire: true }, // 위시 전용 희망곡 제외
     orderBy: { createdAt: 'desc' },
     take: 8,
     include: { sheets: { select: { part: true } } },
   })
-  const songTotal = await prisma.song.count()
+  const songTotal = await prisma.song.count({ where: { inRepertoire: true } })
   const journal = await prisma.journalEntry.findMany({
     orderBy: { createdAt: 'desc' },
     take: 3,

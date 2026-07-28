@@ -77,7 +77,11 @@ export default function RehearsalForm({
   useEffect(() => {
     fetch('/api/songs')
       .then(r => r.json())
-      .then(d => setSongs(d.songs))
+      .then(d =>
+        setSongs(
+          (d.songs as (SongItem & { inRepertoire: boolean })[]).filter(s => s.inRepertoire),
+        ),
+      )
       .catch(() => {})
   }, [])
 

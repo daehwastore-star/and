@@ -45,7 +45,11 @@ export default function NewSchedulePage() {
       .catch(() => {})
     fetch('/api/songs')
       .then(r => r.json())
-      .then(d => setSongs(d.songs))
+      .then(d =>
+        setSongs(
+          (d.songs as (Song & { inRepertoire: boolean })[]).filter(s => s.inRepertoire),
+        ),
+      )
       .catch(() => {})
   }, [])
 

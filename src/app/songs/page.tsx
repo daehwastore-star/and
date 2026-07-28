@@ -10,6 +10,7 @@ interface Song {
   artist: string | null
   link: string | null
   artwork: string | null
+  inRepertoire: boolean
   rehearsals: { rehearsalId: string }[]
   sheets: { id: string; part: string }[]
 }
@@ -90,7 +91,9 @@ export default function SongsPage() {
     }
   }
 
-  const registered = new Set(songs.map(s => `${s.title}|${s.artist ?? ''}`))
+  // 정식 합주곡만 목록에 표시 (위시 전용 희망곡은 아래 위시리스트에만)
+  const repertoire = songs.filter(s => s.inRepertoire)
+  const registered = new Set(repertoire.map(s => `${s.title}|${s.artist ?? ''}`))
 
   return (
     <main className="px-4 pt-8">
@@ -185,16 +188,16 @@ export default function SongsPage() {
       {/* 등록된 곡 목록 */}
       <section className="mt-6">
         <h2 className="text-base font-semibold">
-          연습곡 목록 <span className="text-zinc-500">({songs.length})</span>
+          연습곡 목록 <span className="text-zinc-500">({repertoire.length})</span>
         </h2>
-        {songs.length === 0 ? (
+        {repertoire.length === 0 ? (
           <p className="mt-2 rounded-2xl bg-surface p-6 text-center text-sm text-zinc-500">
             아직 등록된 곡이 없어요.
             <br />위에서 검색해서 추가해보세요!
           </p>
         ) : (
           <div className="mt-2 overflow-hidden rounded-2xl bg-surface">
-            {songs.map(s => {
+            {repertoire.map(s => {
               const parts = [...new Set(s.sheets.map(x => x.part))]
               return (
                 <Link

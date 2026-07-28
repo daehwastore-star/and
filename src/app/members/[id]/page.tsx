@@ -74,7 +74,7 @@ export default function MemberProfilePage({
       const res = await fetch('/api/songs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(r),
+        body: JSON.stringify({ ...r, repertoire: false }), // 위시 전용 — 정식 합주곡 목록엔 안 뜸
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || '추가 실패')
