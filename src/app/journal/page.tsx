@@ -21,6 +21,7 @@ interface Rehearsal {
 interface Member {
   id: string
   name: string
+  roles: string | null
 }
 
 export default function JournalPage() {
@@ -204,11 +205,18 @@ export default function JournalPage() {
                 {e.text && <p className="whitespace-pre-wrap">{e.text}</p>}
                 <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
                   <span>
-                    {e.author && <b className="text-zinc-700">{e.author}</b>}
+                    {e.author && (
+                      <b className="text-zinc-700">
+                        {e.author}
+                        {(() => {
+                          const roles = members.find(m => m.name === e.author)?.roles
+                          return roles ? `(${roles.split(',').join('·')})` : ''
+                        })()}
+                      </b>
+                    )}
                     {e.author && ' · '}
-                    {e.rehearsal
-                      ? `${fmtDateTime(e.rehearsal.date)} 합주`
-                      : fmtDate(e.createdAt)}
+                    {fmtDate(e.createdAt)} 올림
+                    {e.rehearsal && ` · ${fmtDateTime(e.rehearsal.date)} 합주`}
                   </span>
                   <button
                     type="button"

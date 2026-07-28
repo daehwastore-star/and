@@ -1,8 +1,7 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { getMembers } from '@/lib/members'
-import { fmtDateTime, kstDday } from '@/lib/format'
-import { partEmoji } from '@/lib/sheets'
+import { fmtDateTime, fmtDate, kstDday } from '@/lib/format'
 import { isVideoFile } from '@/lib/media'
 import MyIdentity from '@/components/MyIdentity'
 
@@ -204,7 +203,6 @@ export default async function Home() {
         ) : (
           <div className="mt-2 grid grid-cols-2 gap-2">
             {songs.map(s => {
-              const parts = [...new Set(s.sheets.map(x => x.part))]
               return (
                 <Link
                   key={s.id}
@@ -226,13 +224,6 @@ export default async function Home() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{s.title}</span>
                     <span className="block truncate text-xs text-zinc-500">{s.artist}</span>
-                    {parts.length > 0 && (
-                      <span className="block text-xs">
-                        {parts.map(p => (
-                          <span key={p}>{partEmoji(p)}</span>
-                        ))}
-                      </span>
-                    )}
                   </span>
                 </Link>
               )
@@ -280,9 +271,18 @@ export default async function Home() {
                 <div className="p-4">
                   {e.text && <p className="line-clamp-2 whitespace-pre-wrap">{e.text}</p>}
                   <p className="mt-1.5 text-xs text-zinc-500">
-                    {e.author && <b className="text-zinc-700">{e.author}</b>}
+                    {e.author && (
+                      <b className="text-zinc-700">
+                        {e.author}
+                        {(() => {
+                          const roles = members.find(m => m.name === e.author)?.roles
+                          return roles ? `(${roles.split(',').join('·')})` : ''
+                        })()}
+                      </b>
+                    )}
                     {e.author && ' · '}
-                    {e.rehearsal ? `${fmtDateTime(e.rehearsal.date)} 합주` : ''}
+                    {fmtDate(e.createdAt)} 올림
+                    {e.rehearsal && ` · ${fmtDateTime(e.rehearsal.date)} 합주`}
                   </p>
                 </div>
               </Link>
