@@ -202,6 +202,15 @@ export default async function Home() {
         )}
       </section>
 
+      {/* 통계 */}
+      <Link
+        href="/stats"
+        className="mt-4 flex items-center justify-between rounded-2xl bg-surface p-4 active:bg-surface-2"
+      >
+        <span className="font-semibold">📊 밴드 통계</span>
+        <span className="text-sm text-zinc-500">지각왕 · 참석률 · 비용 ›</span>
+      </Link>
+
       {/* 정산 규칙 */}
       <section className="mt-4 rounded-2xl bg-surface p-4 text-sm text-zinc-500">
         <h2 className="font-semibold text-zinc-700">💡 정산 규칙</h2>

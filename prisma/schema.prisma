@@ -33,6 +33,19 @@ model Rehearsal {
 
   attendances Attendance[]
   songs       RehearsalSong[]
+  journal     JournalEntry[]
+}
+
+// 합주 일지 (사진 + 한줄 기록 아카이브)
+model JournalEntry {
+  id          String   @id @default(cuid())
+  rehearsalId String?
+  text        String?
+  photo       String? // uploads/ 폴더 파일명
+  author      String? // 남긴 사람 이름
+  createdAt   DateTime @default(now())
+
+  rehearsal Rehearsal? @relation(fields: [rehearsalId], references: [id], onDelete: SetNull)
 }
 
 // 합주곡

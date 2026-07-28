@@ -39,6 +39,7 @@ export default function RehearsalDetailPage({
   const [members, setMembers] = useState<Member[]>([])
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const load = useCallback(async () => {
     const [res, memberRes] = await Promise.all([
@@ -64,6 +65,39 @@ export default function RehearsalDetailPage({
     await fetch(`/api/rehearsals/${id}`, { method: 'DELETE' })
     router.push('/settle')
     router.refresh()
+  }
+
+  const copyShareText = async (r: Rehearsal) => {
+    const res = calcSettlement(
+      r.roomCost,
+      r.hours,
+      r.afterPartyCost,
+      r.attendances.map(a => ({
+        memberId: a.memberId,
+        name: a.member.name,
+        late: a.late,
+        afterParty: a.afterParty,
+      })),
+    )
+    const lines = [
+      `🎸 ${fmtDateTime(r.date)} 합주 정산`,
+      `합주 ${r.hours}시간 ${won(r.roomCost)}` +
+        (r.afterPartyCost > 0 ? ` · 뒤풀이 ${won(r.afterPartyCost)}` : ''),
+      '',
+      ...res.shares.map(
+        s =>
+          `${s.name}: ${won(s.total)}` +
+          (s.late ? ' (지각🕑)' : '') +
+          (s.afterParty ? ' 🍻' : ''),
+      ),
+    ]
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      alert('복사에 실패했어요. 직접 캡처해서 공유해주세요!')
+    }
   }
 
   if (!rehearsal) {
@@ -227,6 +261,15 @@ export default function RehearsalDetailPage({
             <div className="text-lg font-bold text-brand">{won(s.total)}</div>
           </div>
         ))}
+        <div className="p-3">
+          <button
+            type="button"
+            onClick={() => copyShareText(rehearsal)}
+            className="w-full rounded-xl bg-brand/10 py-3 font-semibold text-brand"
+          >
+            {copied ? '✓ 복사됐어요! 단톡방에 붙여넣기' : '📋 정산표 복사 (카톡 공유용)'}
+          </button>
+        </div>
       </section>
       )}
 
