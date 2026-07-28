@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import BottomNav from '@/components/BottomNav'
+import IdentityGate from '@/components/IdentityGate'
 
 export const metadata: Metadata = {
   title: '밴드 합주 매니저',
@@ -30,8 +31,10 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className="min-h-dvh antialiased">
-        <div className="mx-auto max-w-lg pb-24">{children}</div>
-        <BottomNav />
+        <IdentityGate>
+          <div className="mx-auto max-w-lg pb-24">{children}</div>
+          <BottomNav />
+        </IdentityGate>
       </body>
     </html>
   )

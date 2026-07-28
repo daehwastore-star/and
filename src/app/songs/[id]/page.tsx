@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { SHEET_PARTS, partEmoji } from '@/lib/sheets'
 import { fmtDate } from '@/lib/format'
+import { getMyId } from '@/lib/identity'
 
 interface Sheet {
   id: string
@@ -47,6 +48,12 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
     }
     setSong(s.song)
     setMembers(m.members)
+    // 기기에 저장된 "나"를 기본 업로더로
+    const myId = getMyId()
+    if (myId) {
+      const me = (m.members as Member[]).find(x => x.id === myId)
+      if (me) setUploader(prev => prev || me.name)
+    }
   }, [id])
 
   useEffect(() => {

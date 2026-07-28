@@ -4,6 +4,7 @@ import { getMembers } from '@/lib/members'
 import { fmtDateTime, kstDday } from '@/lib/format'
 import { partEmoji } from '@/lib/sheets'
 import { isVideoFile } from '@/lib/media'
+import MyIdentity from '@/components/MyIdentity'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,6 +50,7 @@ export default async function Home() {
       <p className="mt-1 text-sm text-zinc-500">
         합주 일정 잡고, 합주비·뒤풀이비 깔끔하게 엔빵
       </p>
+      <MyIdentity />
 
       {/* 공연 카운트다운 */}
       {nextGig && (

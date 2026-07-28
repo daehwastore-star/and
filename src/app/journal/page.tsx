@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fmtDateTime, fmtDate } from '@/lib/format'
 import { isVideoFile } from '@/lib/media'
+import { getMyId } from '@/lib/identity'
 
 interface Entry {
   id: string
@@ -43,6 +44,12 @@ export default function JournalPage() {
     setEntries(e.entries)
     setRehearsals(r.rehearsals)
     setMembers(m.members)
+    // 기기에 저장된 "나"를 기본 작성자로
+    const myId = getMyId()
+    if (myId) {
+      const me = (m.members as { id: string; name: string }[]).find(x => x.id === myId)
+      if (me) setAuthor(prev => prev || me.name)
+    }
   }, [])
 
   useEffect(() => {
