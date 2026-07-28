@@ -6,10 +6,15 @@ import { calcSettlement, won } from '@/lib/settlement'
 export const dynamic = 'force-dynamic'
 
 export default async function SettleListPage() {
-  const rehearsals = await prisma.rehearsal.findMany({
+  const all = await prisma.rehearsal.findMany({
     orderBy: { date: 'desc' },
     include: { attendances: { include: { member: true } } },
   })
+  // 아직 정산 입력 전인 미래 일정은 정산 목록에서 제외 (스케줄 탭에 표시됨)
+  const now = new Date()
+  const rehearsals = all.filter(
+    r => r.date < now || r.roomCost > 0 || r.attendances.length > 0,
+  )
 
   return (
     <main className="px-4 pt-8">
@@ -17,12 +22,12 @@ export default async function SettleListPage() {
         <h1 className="text-2xl font-bold">💸 정산 기록</h1>
         <Link
           href="/settle/new"
-          className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-black"
+          className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white"
         >
           + 새 정산
         </Link>
       </div>
-      <p className="mt-1 text-sm text-zinc-400">
+      <p className="mt-1 text-sm text-zinc-500">
         합주비 엔빵 · 지각은 1시간 절반 추가 · 뒤풀이는 참석자끼리
       </p>
 
@@ -53,9 +58,9 @@ export default async function SettleListPage() {
               >
                 <div className="flex items-center justify-between">
                   <span className="font-semibold">{fmtDateTime(r.date)}</span>
-                  <span className="text-sm text-zinc-400">{r.hours}시간</span>
+                  <span className="text-sm text-zinc-500">{r.hours}시간</span>
                 </div>
-                <div className="mt-1 text-sm text-zinc-400">
+                <div className="mt-1 text-sm text-zinc-500">
                   {result.attendeeCount}명 참석
                   {result.lateCount > 0 && ` (지각 ${result.lateCount})`} · 합주비{' '}
                   {won(r.roomCost)}

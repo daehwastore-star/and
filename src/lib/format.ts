@@ -24,6 +24,14 @@ export function fmtDate(d: Date | string): string {
   })
 }
 
+// 오늘(KST) 기준 D-day 계산: 0=오늘, 1=내일, 음수=지남
+export function kstDday(d: Date | string): number {
+  const toUtcMidnight = (x: Date) =>
+    new Date(x.toLocaleDateString('en-CA', { timeZone: KST })).getTime()
+  const target = typeof d === 'string' ? new Date(d) : d
+  return Math.round((toUtcMidnight(target) - toUtcMidnight(new Date())) / 86400000)
+}
+
 // datetime-local 입력값("2026-08-01T19:00")을 KST로 고정해 ISO 문자열로
 export function localInputToKstIso(v: string): string {
   return `${v}:00+09:00`

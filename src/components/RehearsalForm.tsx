@@ -118,7 +118,7 @@ export default function RehearsalForm({
   return (
     <div className="space-y-5">
       <div>
-        <label className="text-sm font-semibold text-zinc-300">합주 날짜/시간</label>
+        <label className="text-sm font-semibold text-zinc-700">합주 날짜/시간</label>
         <input
           type="datetime-local"
           value={date}
@@ -128,7 +128,7 @@ export default function RehearsalForm({
       </div>
 
       <div>
-        <label className="text-sm font-semibold text-zinc-300">합주 시간</label>
+        <label className="text-sm font-semibold text-zinc-700">합주 시간</label>
         <div className="mt-1 flex gap-2">
           {[2, 3].map(h => (
             <button
@@ -136,7 +136,7 @@ export default function RehearsalForm({
               type="button"
               onClick={() => setHours(h)}
               className={`flex-1 rounded-xl py-3 font-semibold ${
-                hours === h ? 'bg-brand text-black' : 'bg-surface text-zinc-300'
+                hours === h ? 'bg-brand text-white' : 'bg-surface text-zinc-700'
               }`}
             >
               {h}시간
@@ -146,7 +146,7 @@ export default function RehearsalForm({
       </div>
 
       <div>
-        <label className="text-sm font-semibold text-zinc-300">합주실 비용 (원)</label>
+        <label className="text-sm font-semibold text-zinc-700">합주실 비용 (원)</label>
         <input
           type="number"
           inputMode="numeric"
@@ -158,11 +158,11 @@ export default function RehearsalForm({
       </div>
 
       <div>
-        <label className="text-sm font-semibold text-zinc-300">
+        <label className="text-sm font-semibold text-zinc-700">
           참석자 · 지각 · 뒤풀이
         </label>
         <div className="mt-1 overflow-hidden rounded-2xl bg-surface">
-          <div className="grid grid-cols-[1fr_3.5rem_3.5rem] gap-1 border-b border-white/10 px-4 py-2 text-xs text-zinc-500">
+          <div className="grid grid-cols-[1fr_3.5rem_3.5rem] gap-1 border-b border-zinc-200 px-4 py-2 text-xs text-zinc-500">
             <span>이름 (탭해서 참석 체크)</span>
             <span className="text-center">지각</span>
             <span className="text-center">뒤풀이</span>
@@ -172,7 +172,7 @@ export default function RehearsalForm({
             return (
               <div
                 key={m.id}
-                className="grid grid-cols-[1fr_3.5rem_3.5rem] items-center gap-1 border-b border-white/5 px-4 py-2 last:border-0"
+                className="grid grid-cols-[1fr_3.5rem_3.5rem] items-center gap-1 border-b border-zinc-100 px-4 py-2 last:border-0"
               >
                 <button
                   type="button"
@@ -183,7 +183,7 @@ export default function RehearsalForm({
                 >
                   <span
                     className={`flex h-5 w-5 items-center justify-center rounded-md text-xs ${
-                      st.attending ? 'bg-brand text-black' : 'bg-surface-2'
+                      st.attending ? 'bg-brand text-white' : 'bg-surface-2'
                     }`}
                   >
                     {st.attending ? '✓' : ''}
@@ -196,7 +196,7 @@ export default function RehearsalForm({
                   disabled={!st.attending}
                   onClick={() => toggle(m.id, 'late')}
                   className={`mx-auto h-8 w-8 rounded-lg text-sm ${
-                    st.late ? 'bg-amber-500 text-black' : 'bg-surface-2 text-zinc-500'
+                    st.late ? 'bg-amber-500 text-white' : 'bg-surface-2 text-zinc-500'
                   } disabled:opacity-30`}
                 >
                   {st.late ? '🕑' : '－'}
@@ -207,7 +207,7 @@ export default function RehearsalForm({
                   onClick={() => toggle(m.id, 'afterParty')}
                   className={`mx-auto h-8 w-8 rounded-lg text-sm ${
                     st.afterParty
-                      ? 'bg-emerald-500 text-black'
+                      ? 'bg-emerald-500 text-white'
                       : 'bg-surface-2 text-zinc-500'
                   } disabled:opacity-30`}
                 >
@@ -220,7 +220,7 @@ export default function RehearsalForm({
       </div>
 
       <div>
-        <label className="text-sm font-semibold text-zinc-300">
+        <label className="text-sm font-semibold text-zinc-700">
           뒤풀이 비용 (원) <span className="font-normal text-zinc-500">— 없으면 0</span>
         </label>
         <input
@@ -234,7 +234,7 @@ export default function RehearsalForm({
       </div>
 
       <div>
-        <label className="text-sm font-semibold text-zinc-300">메모</label>
+        <label className="text-sm font-semibold text-zinc-700">메모</label>
         <input
           type="text"
           value={memo}
@@ -261,20 +261,20 @@ export default function RehearsalForm({
             ))}
           </div>
           {preview.lateCount > 0 && (
-            <p className="mt-2 text-xs text-zinc-400">
+            <p className="mt-2 text-xs text-zinc-500">
               🕑 지각 부담금 {won(preview.latePenaltyEach)}/인 반영됨
             </p>
           )}
         </div>
       )}
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-500">{error}</p>}
 
       <button
         type="button"
         onClick={submit}
         disabled={saving}
-        className="w-full rounded-xl bg-brand py-3.5 font-bold text-black disabled:opacity-50"
+        className="w-full rounded-xl bg-brand py-3.5 font-bold text-white disabled:opacity-50"
       >
         {saving ? '저장 중…' : submitLabel}
       </button>

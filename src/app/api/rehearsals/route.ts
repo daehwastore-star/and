@@ -20,10 +20,8 @@ export async function POST(req: NextRequest) {
   const roomCost = Math.max(0, Math.round(Number(body.roomCost) || 0))
   const afterPartyCost = Math.max(0, Math.round(Number(body.afterPartyCost) || 0))
   const memo = typeof body.memo === 'string' ? body.memo.trim() || null : null
+  // 일정만 먼저 만드는 경우 참석자 없이 생성 가능 (정산 때 채움)
   const attendees = parseAttendees(body.attendees)
-
-  if (attendees.length === 0)
-    return NextResponse.json({ error: '참석자를 1명 이상 선택해주세요' }, { status: 400 })
 
   const rehearsal = await prisma.rehearsal.create({
     data: {

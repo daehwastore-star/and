@@ -63,7 +63,7 @@ export default function RehearsalDetailPage({
   if (!rehearsal) {
     return (
       <main className="px-4 pt-8">
-        <p className="text-zinc-400">{error || '불러오는 중…'}</p>
+        <p className="text-zinc-500">{error || '불러오는 중…'}</p>
       </main>
     )
   }
@@ -115,7 +115,7 @@ export default function RehearsalDetailPage({
           <button
             type="button"
             onClick={() => setEditing(false)}
-            className="mt-3 w-full rounded-xl bg-surface py-3 text-sm text-zinc-300"
+            className="mt-3 w-full rounded-xl bg-surface py-3 text-sm text-zinc-700"
           >
             취소
           </button>
@@ -127,7 +127,7 @@ export default function RehearsalDetailPage({
   return (
     <main className="px-4 pt-8">
       <h1 className="text-2xl font-bold">{fmtDateTime(rehearsal.date)}</h1>
-      <p className="mt-1 text-sm text-zinc-400">
+      <p className="mt-1 text-sm text-zinc-500">
         {rehearsal.hours}시간 합주 · {result.attendeeCount}명 참석
         {rehearsal.memo && ` · ${rehearsal.memo}`}
       </p>
@@ -153,19 +153,34 @@ export default function RehearsalDetailPage({
       </section>
 
       {/* 인당 정산표 */}
+      {result.shares.length === 0 ? (
+        <section className="mt-4 rounded-2xl bg-brand/10 p-5 text-center">
+          <p className="text-sm text-zinc-700">
+            아직 정산 전이에요.
+            <br />합주가 끝나면 아래 <b>정산 입력</b>으로 참석자와 비용을 채워주세요!
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="mt-3 w-full rounded-xl bg-brand py-3 font-bold text-white"
+          >
+            정산 입력하기
+          </button>
+        </section>
+      ) : (
       <section className="mt-4 overflow-hidden rounded-2xl bg-surface">
-        <div className="border-b border-white/10 px-4 py-3 font-semibold">
+        <div className="border-b border-zinc-200 px-4 py-3 font-semibold">
           인당 낼 금액
         </div>
         {result.shares.map(s => (
           <div
             key={s.memberId}
-            className="flex items-center justify-between border-b border-white/5 px-4 py-3 last:border-0"
+            className="flex items-center justify-between border-b border-zinc-100 px-4 py-3 last:border-0"
           >
             <div>
               <div className="font-medium">
                 {s.name}
-                {s.late && <span className="ml-1 text-amber-400">🕑 지각</span>}
+                {s.late && <span className="ml-1 text-amber-600">🕑 지각</span>}
                 {s.afterParty && <span className="ml-1">🍻</span>}
               </div>
               <div className="text-xs text-zinc-500">
@@ -178,6 +193,7 @@ export default function RehearsalDetailPage({
           </div>
         ))}
       </section>
+      )}
 
       {result.lateCount > 0 && (
         <p className="mt-2 text-xs text-zinc-500">
@@ -190,14 +206,14 @@ export default function RehearsalDetailPage({
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="flex-1 rounded-xl bg-surface py-3 text-sm text-zinc-300"
+          className="flex-1 rounded-xl bg-surface py-3 text-sm text-zinc-700"
         >
           수정
         </button>
         <button
           type="button"
           onClick={remove}
-          className="rounded-xl bg-surface px-4 py-3 text-sm text-red-400"
+          className="rounded-xl bg-surface px-4 py-3 text-sm text-red-500"
         >
           삭제
         </button>
