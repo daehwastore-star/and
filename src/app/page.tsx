@@ -34,7 +34,7 @@ export default async function Home() {
   })
   const songs = await prisma.song.findMany({
     orderBy: { createdAt: 'desc' },
-    take: 5,
+    take: 8,
     include: { sheets: { select: { part: true } } },
   })
   const songTotal = await prisma.song.count()
