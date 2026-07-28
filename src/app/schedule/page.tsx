@@ -22,7 +22,8 @@ export default async function SchedulePage() {
 
   const now = new Date()
   const cutoff = new Date(now.getTime() - 12 * 60 * 60 * 1000) // 당일 합주는 끝나도 당일까진 표시
-  const upcoming = rehearsals.filter(r => r.date >= cutoff)
+  // 공연은 홈 카운트다운 배너에 표시되므로 목록에서는 합주만
+  const upcoming = rehearsals.filter(r => r.date >= cutoff && r.type === '합주')
   const past = rehearsals.filter(r => r.date < cutoff).reverse().slice(0, 5)
 
   return (
