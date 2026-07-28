@@ -19,12 +19,27 @@ model Member {
 
   attendances Attendance[]
   votes       PollVote[]
+  wishes      SongWish[]
 }
 
-// 합주 기록 (정산 단위)
+// 합주하고 싶은 곡 위시리스트
+model SongWish {
+  id        String   @id @default(cuid())
+  memberId  String
+  songId    String
+  createdAt DateTime @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  song   Song   @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, songId])
+}
+
+// 합주/공연 일정 (정산 단위)
 model Rehearsal {
   id             String   @id @default(cuid())
-  date           DateTime // 합주 날짜/시간
+  type           String   @default("합주") // 합주 | 공연
+  date           DateTime // 날짜/시간
   hours          Int      @default(2) // 합주 시간 (보통 2, 가끔 3)
   roomCost       Int      @default(0) // 합주실 비용 (원)
   afterPartyCost Int      @default(0) // 뒤풀이 비용 (원, 0이면 뒤풀이 없음)
@@ -59,6 +74,7 @@ model Song {
 
   rehearsals RehearsalSong[]
   sheets     SheetMusic[]
+  wishes     SongWish[]
 }
 
 // 곡별 악보 파일 (파트별 업로드)

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { fmtDateTime, fmtDate } from '@/lib/format'
+import { isVideoFile } from '@/lib/media'
 
 interface Entry {
   id: string
@@ -145,10 +146,10 @@ export default function JournalPage() {
           />
 
           <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-zinc-700">
-            📷 {photoFile ? photoFile.name : '사진 추가 (선택)'}
+            📷 {photoFile ? photoFile.name : '사진/영상 추가 (선택)'}
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               className="hidden"
               onChange={e => setPhotoFile(e.target.files?.[0] ?? null)}
             />
@@ -176,14 +177,22 @@ export default function JournalPage() {
         <div className="mt-4 space-y-3">
           {entries.map(e => (
             <article key={e.id} className="overflow-hidden rounded-2xl bg-surface">
-              {e.photo && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`/api/photos/${e.photo}`}
-                  alt=""
-                  className="max-h-96 w-full object-cover"
-                />
-              )}
+              {e.photo &&
+                (isVideoFile(e.photo) ? (
+                  <video
+                    src={`/api/photos/${e.photo}`}
+                    controls
+                    playsInline
+                    className="max-h-96 w-full bg-black"
+                  />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/api/photos/${e.photo}`}
+                    alt=""
+                    className="max-h-96 w-full object-cover"
+                  />
+                ))}
               <div className="p-4">
                 {e.text && <p className="whitespace-pre-wrap">{e.text}</p>}
                 <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">

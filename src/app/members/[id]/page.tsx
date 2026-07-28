@@ -10,6 +10,14 @@ interface Member {
   name: string
   roles: string | null
   photo: string | null
+  wishes: { songId: string }[]
+}
+
+interface Song {
+  id: string
+  title: string
+  artist: string | null
+  artwork: string | null
 }
 
 export default function MemberProfilePage({
@@ -20,22 +28,30 @@ export default function MemberProfilePage({
   const { id } = use(params)
   const router = useRouter()
   const [member, setMember] = useState<Member | null>(null)
+  const [songs, setSongs] = useState<Song[]>([])
   const [roles, setRoles] = useState<Set<string>>(new Set())
+  const [wishSel, setWishSel] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/members')
+    const [res, songRes] = await Promise.all([
+      fetch('/api/members'),
+      fetch('/api/songs'),
+    ])
     const data = await res.json()
+    const songData = await songRes.json()
     const m = (data.members as Member[]).find(x => x.id === id)
     if (!m) {
       setError('멤버를 찾을 수 없어요')
       return
     }
     setMember(m)
+    setSongs(songData.songs)
     setRoles(new Set(m.roles ? m.roles.split(',') : []))
+    setWishSel(new Set(m.wishes.map(w => w.songId)))
   }, [id])
 
   useEffect(() => {
@@ -57,7 +73,7 @@ export default function MemberProfilePage({
       const res = await fetch(`/api/members/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roles: [...roles] }),
+        body: JSON.stringify({ roles: [...roles], wishSongIds: [...wishSel] }),
       })
       if (!res.ok) throw new Error('저장 실패')
       router.push('/')
@@ -155,6 +171,53 @@ export default function MemberProfilePage({
             </button>
           ))}
         </div>
+      </section>
+
+      {/* 합주하고 싶은 곡 */}
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold text-zinc-700">
+          🙏 합주하고 싶은 곡{' '}
+          <span className="font-normal text-zinc-500">(여러 개 가능)</span>
+        </h2>
+        {songs.length === 0 ? (
+          <p className="mt-2 rounded-xl bg-surface p-3 text-sm text-zinc-500">
+            등록된 곡이 없어요 — 합주곡 탭에서 곡을 먼저 추가해주세요
+          </p>
+        ) : (
+          <div className="mt-2 space-y-1.5">
+            {songs.map(s => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() =>
+                  setWishSel(prev => {
+                    const next = new Set(prev)
+                    if (next.has(s.id)) next.delete(s.id)
+                    else next.add(s.id)
+                    return next
+                  })
+                }
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left ${
+                  wishSel.has(s.id) ? 'bg-brand/15 ring-1 ring-brand/40' : 'bg-surface'
+                }`}
+              >
+                {s.artwork ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={s.artwork} alt="" className="h-9 w-9 rounded-lg object-cover" />
+                ) : (
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-2">
+                    🎵
+                  </span>
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{s.title}</span>
+                  <span className="block truncate text-xs text-zinc-500">{s.artist}</span>
+                </span>
+                {wishSel.has(s.id) && <span className="shrink-0 font-bold text-brand">🙏</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       {error && <p className="mt-3 text-sm text-red-500">{error}</p>}

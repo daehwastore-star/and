@@ -28,8 +28,18 @@ export default async function SettleListPage() {
         </Link>
       </div>
       <p className="mt-1 text-sm text-zinc-500">
-        합주비 엔빵 · 지각은 1시간 절반 추가 · 뒤풀이는 참석자끼리
+        합주 끝나면 여기서 정산해요
       </p>
+
+      {/* 정산 규칙 */}
+      <section className="mt-4 rounded-2xl bg-surface p-4 text-sm text-zinc-500">
+        <h2 className="font-semibold text-zinc-700">💡 정산 규칙</h2>
+        <ul className="mt-2 list-inside list-disc space-y-1">
+          <li>합주비는 참석자 엔빵</li>
+          <li>지각한 사람은 1시간 비용의 절반을 추가 부담</li>
+          <li>뒤풀이비는 뒤풀이 참석자끼리만 엔빵</li>
+        </ul>
+      </section>
 
       {rehearsals.length === 0 ? (
         <p className="mt-6 rounded-2xl bg-surface p-6 text-center text-sm text-zinc-500">

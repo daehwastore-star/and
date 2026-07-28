@@ -23,6 +23,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const data: Record<string, unknown> = {}
+  if (body.type === '합주' || body.type === '공연') data.type = body.type
   if (body.date) {
     const d = new Date(body.date)
     if (!isNaN(d.getTime())) data.date = d

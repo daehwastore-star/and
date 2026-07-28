@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
-import { getMembers } from '@/lib/members'
+import { prisma } from '@/lib/prisma'
+import { ensureMembers } from '@/lib/members'
 
 export async function GET() {
-  const members = await getMembers()
+  await ensureMembers()
+  const members = await prisma.member.findMany({
+    where: { active: true },
+    orderBy: { sortOrder: 'asc' },
+    include: { wishes: { select: { songId: true } } },
+  })
   return NextResponse.json({ members })
 }

@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
   if (isNaN(date.getTime()))
     return NextResponse.json({ error: '날짜를 입력해주세요' }, { status: 400 })
 
+  const type = body.type === '공연' ? '공연' : '합주'
   const hours = Number(body.hours) || 2
   const roomCost = Math.max(0, Math.round(Number(body.roomCost) || 0))
   const afterPartyCost = Math.max(0, Math.round(Number(body.afterPartyCost) || 0))
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   const rehearsal = await prisma.rehearsal.create({
     data: {
-      date, hours, roomCost, afterPartyCost, memo,
+      type, date, hours, roomCost, afterPartyCost, memo,
       attendances: {
         create: attendees.map(a => ({
           memberId: a.memberId,

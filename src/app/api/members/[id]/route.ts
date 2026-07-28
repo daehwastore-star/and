@@ -15,6 +15,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data.roles = roles.length > 0 ? roles.join(',') : null
   }
 
+  // 합주하고 싶은 곡 위시리스트 (전체 교체)
+  if (Array.isArray(body.wishSongIds)) {
+    const songIds = body.wishSongIds.filter((s: unknown): s is string => typeof s === 'string')
+    await prisma.songWish.deleteMany({ where: { memberId: id } })
+    if (songIds.length > 0) {
+      const valid = await prisma.song.findMany({
+        where: { id: { in: songIds } },
+        select: { id: true },
+      })
+      await prisma.songWish.createMany({
+        data: valid.map(s => ({ memberId: id, songId: s.id })),
+      })
+    }
+  }
+
   const member = await prisma.member.update({ where: { id }, data })
   return NextResponse.json({ ok: true, member })
 }

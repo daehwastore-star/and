@@ -39,7 +39,7 @@ export default async function SchedulePage() {
 
       {/* 다가오는 일정 피드 */}
       <section className="mt-5">
-        <h2 className="text-base font-semibold">다가오는 합주</h2>
+        <h2 className="text-base font-semibold">다가오는 일정</h2>
         {upcoming.length === 0 ? (
           <p className="mt-2 rounded-2xl bg-surface p-6 text-center text-sm text-zinc-500">
             잡혀있는 합주가 없어요.
@@ -58,12 +58,14 @@ export default async function SchedulePage() {
                   <div className="flex items-center gap-2">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                        d <= 1
-                          ? 'bg-brand text-white'
-                          : 'bg-brand/15 text-brand'
+                        r.type === '공연'
+                          ? 'bg-rose-500 text-white'
+                          : d <= 1
+                            ? 'bg-brand text-white'
+                            : 'bg-brand/15 text-brand'
                       }`}
                     >
-                      {ddayLabel(d)}
+                      {r.type === '공연' ? `🎤 공연 ${ddayLabel(d)}` : ddayLabel(d)}
                     </span>
                     <span className="font-semibold">{fmtDateTime(r.date)}</span>
                   </div>

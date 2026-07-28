@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getMembers } from '@/lib/members'
 import { fmtDateTime, kstDday } from '@/lib/format'
 import { partEmoji } from '@/lib/sheets'
+import { isVideoFile } from '@/lib/media'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,12 +26,21 @@ export default async function Home() {
       songs: { include: { song: true } },
     },
   })
+  const nextGig = await prisma.rehearsal.findFirst({
+    where: { type: '공연', date: { gte: cutoff } },
+    orderBy: { date: 'asc' },
+  })
   const songs = await prisma.song.findMany({
     orderBy: { createdAt: 'desc' },
     take: 5,
     include: { sheets: { select: { part: true } } },
   })
   const songTotal = await prisma.song.count()
+  const journal = await prisma.journalEntry.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: 3,
+    include: { rehearsal: true },
+  })
 
   return (
     <main className="px-4 pt-8">
@@ -39,10 +49,27 @@ export default async function Home() {
         합주 일정 잡고, 합주비·뒤풀이비 깔끔하게 엔빵
       </p>
 
+      {/* 공연 카운트다운 */}
+      {nextGig && (
+        <Link
+          href={`/settle/${nextGig.id}`}
+          className="mt-5 block rounded-2xl bg-gradient-to-br from-rose-500 to-purple-600 p-5 text-white active:opacity-90"
+        >
+          <div className="text-sm font-semibold opacity-90">🎤 다음 공연까지</div>
+          <div className="mt-1 text-4xl font-extrabold">
+            {kstDday(nextGig.date) === 0 ? 'D-DAY!' : `D-${kstDday(nextGig.date)}`}
+          </div>
+          <div className="mt-2 text-sm opacity-90">
+            {fmtDateTime(nextGig.date)}
+            {nextGig.memo && ` · ${nextGig.memo}`}
+          </div>
+        </Link>
+      )}
+
       {/* 다가오는 합주 */}
       <section className="mt-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">다가오는 합주</h2>
+          <h2 className="text-base font-semibold">다가오는 일정</h2>
           <Link href="/schedule/new" className="text-sm text-brand">
             + 새 일정
           </Link>
@@ -64,10 +91,14 @@ export default async function Home() {
                   <div className="flex items-center gap-2">
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                        d <= 1 ? 'bg-brand text-white' : 'bg-brand/15 text-brand'
+                        r.type === '공연'
+                          ? 'bg-rose-500 text-white'
+                          : d <= 1
+                            ? 'bg-brand text-white'
+                            : 'bg-brand/15 text-brand'
                       }`}
                     >
-                      {ddayLabel(d)}
+                      {r.type === '공연' ? `🎤 공연 ${ddayLabel(d)}` : ddayLabel(d)}
                     </span>
                     <span className="font-semibold">{fmtDateTime(r.date)}</span>
                   </div>
@@ -168,32 +199,32 @@ export default async function Home() {
             아직 등록된 곡이 없어요. 합주곡 탭에서 추가해보세요!
           </p>
         ) : (
-          <div className="mt-2 overflow-hidden rounded-2xl bg-surface">
+          <div className="mt-2 grid grid-cols-2 gap-2">
             {songs.map(s => {
               const parts = [...new Set(s.sheets.map(x => x.part))]
               return (
                 <Link
                   key={s.id}
                   href={`/songs/${s.id}`}
-                  className="flex items-center gap-3 border-b border-zinc-100 px-3 py-2.5 last:border-0 active:bg-surface-2"
+                  className="overflow-hidden rounded-2xl bg-surface active:bg-surface-2"
                 >
                   {s.artwork ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.artwork} alt="" className="h-10 w-10 rounded-lg object-cover" />
+                    <img src={s.artwork} alt="" className="aspect-square w-full object-cover" />
                   ) : (
-                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-2">
+                    <span className="flex aspect-square w-full items-center justify-center bg-surface-2 text-3xl">
                       🎵
                     </span>
                   )}
-                  <span className="min-w-0 flex-1">
+                  <div className="p-2.5">
                     <span className="block truncate text-sm font-medium">{s.title}</span>
                     <span className="block truncate text-xs text-zinc-500">{s.artist}</span>
-                  </span>
-                  <span className="shrink-0 text-sm">
-                    {parts.map(p => (
-                      <span key={p}>{partEmoji(p)}</span>
-                    ))}
-                  </span>
+                    <span className="mt-0.5 block min-h-4 text-xs">
+                      {parts.map(p => (
+                        <span key={p}>{partEmoji(p)}</span>
+                      ))}
+                    </span>
+                  </div>
                 </Link>
               )
             })}
@@ -201,23 +232,54 @@ export default async function Home() {
         )}
       </section>
 
-      {/* 통계 */}
-      <Link
-        href="/stats"
-        className="mt-4 flex items-center justify-between rounded-2xl bg-surface p-4 active:bg-surface-2"
-      >
-        <span className="font-semibold">📊 밴드 통계</span>
-        <span className="text-sm text-zinc-500">지각왕 · 참석률 · 비용 ›</span>
-      </Link>
-
-      {/* 정산 규칙 */}
-      <section className="mt-4 rounded-2xl bg-surface p-4 text-sm text-zinc-500">
-        <h2 className="font-semibold text-zinc-700">💡 정산 규칙</h2>
-        <ul className="mt-2 list-inside list-disc space-y-1">
-          <li>합주비는 참석자 엔빵</li>
-          <li>지각한 사람은 1시간 비용의 절반을 추가 부담</li>
-          <li>뒤풀이비는 뒤풀이 참석자끼리만 엔빵</li>
-        </ul>
+      {/* 기록 피드 */}
+      <section className="mt-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">기록</h2>
+          <Link href="/journal" className="text-sm text-brand">
+            전체 보기 ›
+          </Link>
+        </div>
+        {journal.length === 0 ? (
+          <p className="mt-2 rounded-2xl bg-surface p-4 text-sm text-zinc-500">
+            아직 기록이 없어요. 기록 탭에서 합주의 순간을 남겨보세요!
+          </p>
+        ) : (
+          <div className="mt-2 space-y-3">
+            {journal.map(e => (
+              <Link
+                key={e.id}
+                href="/journal"
+                className="block overflow-hidden rounded-2xl bg-surface active:bg-surface-2"
+              >
+                {e.photo &&
+                  (isVideoFile(e.photo) ? (
+                    <video
+                      src={`/api/photos/${e.photo}`}
+                      controls
+                      playsInline
+                      className="max-h-80 w-full bg-black"
+                    />
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`/api/photos/${e.photo}`}
+                      alt=""
+                      className="max-h-80 w-full object-cover"
+                    />
+                  ))}
+                <div className="p-4">
+                  {e.text && <p className="line-clamp-2 whitespace-pre-wrap">{e.text}</p>}
+                  <p className="mt-1.5 text-xs text-zinc-500">
+                    {e.author && <b className="text-zinc-700">{e.author}</b>}
+                    {e.author && ' · '}
+                    {e.rehearsal ? `${fmtDateTime(e.rehearsal.date)} 합주` : ''}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
     </main>
   )

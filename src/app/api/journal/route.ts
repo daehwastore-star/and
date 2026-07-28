@@ -4,7 +4,10 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join, extname } from 'path'
 import { randomUUID } from 'crypto'
 
-const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']
+const ALLOWED_EXT = [
+  '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', // 사진
+  '.mp4', '.mov', '.webm', '.m4v', // 영상
+]
 
 export async function GET() {
   const entries = await prisma.journalEntry.findMany({
@@ -24,11 +27,11 @@ export async function POST(req: NextRequest) {
 
   let photo: string | null = null
   if (file instanceof File && file.size > 0) {
-    if (file.size > 15 * 1024 * 1024)
-      return NextResponse.json({ error: '15MB 이하 사진만 올릴 수 있어요' }, { status: 400 })
+    if (file.size > 200 * 1024 * 1024)
+      return NextResponse.json({ error: '200MB 이하 파일만 올릴 수 있어요' }, { status: 400 })
     const ext = extname(file.name).toLowerCase() || '.jpg'
     if (!ALLOWED_EXT.includes(ext))
-      return NextResponse.json({ error: '이미지 파일만 올릴 수 있어요' }, { status: 400 })
+      return NextResponse.json({ error: '사진이나 영상 파일만 올릴 수 있어요' }, { status: 400 })
     const dir = join(process.cwd(), 'uploads')
     await mkdir(dir, { recursive: true })
     photo = `${randomUUID()}${ext}`

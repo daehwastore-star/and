@@ -10,6 +10,10 @@ const MIME: Record<string, string> = {
   '.gif': 'image/gif',
   '.heic': 'image/heic',
   '.pdf': 'application/pdf', // 악보 파일
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.m4v': 'video/mp4',
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ name: string }> }) {

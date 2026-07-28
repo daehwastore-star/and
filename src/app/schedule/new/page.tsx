@@ -20,6 +20,7 @@ interface Song {
 
 export default function NewSchedulePage() {
   const router = useRouter()
+  const [type, setType] = useState<'합주' | '공연'>('합주')
   const [eventDates, setEventDates] = useState<string[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [songs, setSongs] = useState<Song[]>([])
@@ -66,6 +67,7 @@ export default function NewSchedulePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          type,
           date: `${day}T${pad(hour)}:${pad(minute)}:00+09:00`,
           hours,
           memo: memo.trim(),
@@ -85,12 +87,31 @@ export default function NewSchedulePage() {
 
   return (
     <main className="px-4 pt-8">
-      <h1 className="text-2xl font-bold">새 합주 일정</h1>
+      <h1 className="text-2xl font-bold">새 일정</h1>
       <p className="mt-1 text-sm text-zinc-500">
         캘린더에서 날짜를 탭하고 시간을 골라주세요
       </p>
 
       <div className="mt-5 space-y-4">
+        <div className="flex gap-2">
+          {(['합주', '공연'] as const).map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setType(t)}
+              className={`flex-1 rounded-xl py-3 font-semibold ${
+                type === t
+                  ? t === '공연'
+                    ? 'bg-rose-500 text-white'
+                    : 'bg-brand text-white'
+                  : 'bg-surface text-zinc-700'
+              }`}
+            >
+              {t === '공연' ? '🎤 공연' : '🎸 합주'}
+            </button>
+          ))}
+        </div>
+
         <Calendar eventDates={eventDates} selected={day} onSelect={setDay} />
 
         <div>

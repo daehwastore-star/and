@@ -20,8 +20,15 @@ interface SearchResult {
   artwork: string | null
 }
 
+interface Wish {
+  id: string
+  member: { id: string; name: string; sortOrder: number }
+  song: { id: string; title: string; artist: string | null; artwork: string | null }
+}
+
 export default function SongsPage() {
   const [songs, setSongs] = useState<Song[]>([])
+  const [wishes, setWishes] = useState<Wish[]>([])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -32,9 +39,14 @@ export default function SongsPage() {
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/songs')
+    const [res, wishRes] = await Promise.all([
+      fetch('/api/songs'),
+      fetch('/api/wishes'),
+    ])
     const data = await res.json()
+    const wishData = await wishRes.json()
     setSongs(data.songs)
+    setWishes(wishData.wishes)
   }, [])
 
   useEffect(() => {
@@ -220,6 +232,52 @@ export default function SongsPage() {
                 </Link>
               )
             })}
+          </div>
+        )}
+      </section>
+
+      {/* 위시리스트 */}
+      <section className="mt-6">
+        <h2 className="text-base font-semibold">🙏 합주 위시리스트</h2>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          홈 → 내 프로필에서 하고 싶은 곡을 고를 수 있어요
+        </p>
+        {wishes.length === 0 ? (
+          <p className="mt-2 rounded-2xl bg-surface p-5 text-center text-sm text-zinc-500">
+            아직 위시리스트가 비어있어요.
+          </p>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {[...new Map(wishes.map(w => [w.member.id, w.member])).values()]
+              .sort((a, b) => a.sortOrder - b.sortOrder)
+              .map(m => (
+                <div key={m.id} className="rounded-2xl bg-surface p-3">
+                  <div className="text-sm font-semibold">{m.name}</div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {wishes
+                      .filter(w => w.member.id === m.id)
+                      .map(w => (
+                        <Link
+                          key={w.id}
+                          href={`/songs/${w.song.id}`}
+                          className="flex items-center gap-1.5 rounded-full bg-brand/10 py-1 pl-1 pr-3 text-xs font-medium text-brand"
+                        >
+                          {w.song.artwork ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={w.song.artwork}
+                              alt=""
+                              className="h-5 w-5 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span>🎵</span>
+                          )}
+                          {w.song.title}
+                        </Link>
+                      ))}
+                  </div>
+                </div>
+              ))}
           </div>
         )}
       </section>
