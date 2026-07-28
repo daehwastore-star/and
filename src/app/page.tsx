@@ -45,11 +45,10 @@ export default async function Home() {
 
   return (
     <main className="px-4 pt-8">
-      <h1 className="text-2xl font-bold">🎸 밴드 합주 매니저</h1>
-      <p className="mt-1 text-sm text-zinc-500">
-        합주 일정 잡고, 합주비·뒤풀이비 깔끔하게 엔빵
-      </p>
-      <MyIdentity />
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold">🎸 밴드 합주 매니저</h1>
+        <MyIdentity />
+      </div>
 
       {/* 공연 카운트다운 */}
       {nextGig && (
