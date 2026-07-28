@@ -209,7 +209,7 @@ export default function MemberProfilePage({
           담당 역할 <span className="font-normal text-zinc-500">(여러 개 가능)</span>
         </h2>
         <div className="mt-2 flex flex-wrap gap-2">
-          {ROLES.map(r => (
+          {ROLES.filter(r => r !== '매니저' || member.name === '홍지효').map(r => (
             <button
               key={r}
               type="button"

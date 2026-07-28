@@ -9,9 +9,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const data: Record<string, unknown> = {}
 
   if (Array.isArray(body.roles)) {
-    const roles = body.roles.filter(
-      (r: unknown): r is string => typeof r === 'string' && VALID_ROLES.includes(r),
-    )
+    const target = await prisma.member.findUnique({ where: { id } })
+    if (!target) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const roles = body.roles
+      .filter((r: unknown): r is string => typeof r === 'string' && VALID_ROLES.includes(r))
+      // 매니저 역할은 홍지효 전용
+      .filter((r: string) => r !== '매니저' || target.name === '홍지효')
     data.roles = roles.length > 0 ? roles.join(',') : null
   }
 
