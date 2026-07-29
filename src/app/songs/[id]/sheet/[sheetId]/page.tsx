@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import BackButton from '@/components/BackButton'
+import PdfViewer from '@/components/PdfViewer'
 
 interface Sheet {
   id: string
@@ -58,7 +59,7 @@ export default function SheetViewerPage({
   return (
     <div className="fixed inset-0 z-40 overflow-auto bg-black">
       {isPdf ? (
-        <iframe src={fileUrl} className="h-full w-full bg-white" title="악보 PDF" />
+        <PdfViewer url={fileUrl} />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={fileUrl} alt="악보" className="w-full" />
