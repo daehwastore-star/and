@@ -1,5 +1,6 @@
 'use client'
 
+import BackButton from '@/components/BackButton'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import RehearsalForm, { type Member } from '@/components/RehearsalForm'
@@ -17,6 +18,7 @@ export default function NewRehearsalPage() {
   if (!members) {
     return (
       <main className="px-4 pt-8">
+      <BackButton fallback="/settle" />
         <p className="text-zinc-500">불러오는 중…</p>
       </main>
     )
@@ -24,6 +26,7 @@ export default function NewRehearsalPage() {
 
   return (
     <main className="px-4 pt-8">
+      <BackButton fallback="/settle" />
       <h1 className="text-2xl font-bold">새 정산</h1>
       <p className="mt-1 text-sm text-zinc-500">
         합주 정보를 입력하면 자동으로 계산돼요

@@ -1,5 +1,6 @@
 'use client'
 
+import BackButton from '@/components/BackButton'
 import { use, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import RehearsalForm, { type Member } from '@/components/RehearsalForm'
@@ -103,6 +104,7 @@ export default function RehearsalDetailPage({
   if (!rehearsal) {
     return (
       <main className="px-4 pt-8">
+      <BackButton fallback="/settle" />
         <p className="text-zinc-500">{error || '불러오는 중…'}</p>
       </main>
     )
@@ -123,6 +125,7 @@ export default function RehearsalDetailPage({
   if (editing) {
     return (
       <main className="px-4 pt-8">
+      <BackButton fallback="/settle" />
         <h1 className="text-2xl font-bold">정산 수정</h1>
         <div className="mt-6">
           <RehearsalForm
@@ -167,6 +170,7 @@ export default function RehearsalDetailPage({
 
   return (
     <main className="px-4 pt-8">
+      <BackButton fallback="/settle" />
       <h1 className="text-2xl font-bold">{fmtDateTime(rehearsal.date)}</h1>
       <p className="mt-1 text-sm text-zinc-500">
         {rehearsal.hours}시간 합주 · {result.attendeeCount}명 참석

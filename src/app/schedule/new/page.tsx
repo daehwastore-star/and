@@ -1,5 +1,6 @@
 'use client'
 
+import BackButton from '@/components/BackButton'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Calendar from '@/components/Calendar'
@@ -91,6 +92,7 @@ export default function NewSchedulePage() {
 
   return (
     <main className="px-4 pt-8">
+      <BackButton fallback="/schedule" />
       <h1 className="text-2xl font-bold">새 일정</h1>
       <p className="mt-1 text-sm text-zinc-500">
         캘린더에서 날짜를 탭하고 시간을 골라주세요

@@ -1,5 +1,6 @@
 'use client'
 
+import BackButton from '@/components/BackButton'
 import { use, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { SHEET_PARTS, partEmoji } from '@/lib/sheets'
@@ -104,6 +105,7 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
   if (!song) {
     return (
       <main className="px-4 pt-8">
+      <BackButton fallback="/songs" />
         <p className="text-zinc-500">{error || '불러오는 중…'}</p>
       </main>
     )
@@ -111,6 +113,7 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
 
   return (
     <main className="px-4 pt-8">
+      <BackButton fallback="/songs" />
       {/* 곡 정보 */}
       <div className="flex items-center gap-4">
         {song.artwork ? (

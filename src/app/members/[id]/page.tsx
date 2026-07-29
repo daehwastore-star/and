@@ -1,5 +1,6 @@
 'use client'
 
+import BackButton from '@/components/BackButton'
 import { use, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -160,6 +161,7 @@ export default function MemberProfilePage({
   if (!member) {
     return (
       <main className="px-4 pt-8">
+      <BackButton fallback="/" />
         <p className="text-zinc-500">{error || '불러오는 중…'}</p>
       </main>
     )
@@ -167,6 +169,7 @@ export default function MemberProfilePage({
 
   return (
     <main className="px-4 pt-8">
+      <BackButton fallback="/" />
       <h1 className="text-2xl font-bold">{member.name} 프로필</h1>
 
       {/* 프로필 사진 */}
