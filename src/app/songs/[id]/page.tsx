@@ -225,26 +225,6 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-        <div>
-          <span className="text-xs text-zinc-500">올리는 사람 (선택)</span>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {members.map(m => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setUploader(u => (u === m.name ? '' : m.name))}
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  uploader === m.name
-                    ? 'bg-brand font-semibold text-white'
-                    : 'bg-surface-2 text-zinc-700'
-                }`}
-              >
-                {m.name}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-zinc-700">
           📎 {file ? file.name : 'PDF 또는 사진 첨부'}
           <input

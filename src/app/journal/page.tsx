@@ -125,26 +125,6 @@ export default function JournalPage() {
             </select>
           </div>
 
-          <div>
-            <label className="text-sm font-semibold text-zinc-700">남기는 사람</label>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {members.map(m => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setAuthor(a => (a === m.name ? '' : m.name))}
-                  className={`rounded-full px-3 py-1.5 text-sm ${
-                    author === m.name
-                      ? 'bg-brand font-semibold text-white'
-                      : 'bg-surface-2 text-zinc-700'
-                  }`}
-                >
-                  {m.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
