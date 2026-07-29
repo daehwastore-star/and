@@ -57,7 +57,7 @@ export default function SheetViewerPage({
   const fileUrl = `/api/photos/${sheet.file}`
 
   return (
-    <div className="fixed inset-0 z-40 overflow-auto bg-black">
+    <div className={`fixed inset-0 z-40 bg-black ${isPdf ? 'overflow-hidden' : 'overflow-auto'}`}>
       {isPdf ? (
         <PdfViewer url={fileUrl} />
       ) : (
