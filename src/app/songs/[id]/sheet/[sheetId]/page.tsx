@@ -1,8 +1,8 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import BackButton from '@/components/BackButton'
-import { partEmoji } from '@/lib/sheets'
 
 interface Sheet {
   id: string
@@ -18,13 +18,14 @@ interface Song {
   sheets: Sheet[]
 }
 
-// 앱 안에서 악보 보기 (뒤로가기 유지)
+// 악보 전체화면 뷰어 (플로팅 뒤로가기)
 export default function SheetViewerPage({
   params,
 }: {
   params: Promise<{ id: string; sheetId: string }>
 }) {
   const { id, sheetId } = use(params)
+  const router = useRouter()
   const [song, setSong] = useState<Song | null>(null)
   const [error, setError] = useState('')
 
@@ -44,7 +45,9 @@ export default function SheetViewerPage({
     return (
       <main className="px-4 pt-8">
         <BackButton fallback={`/songs/${id}`} />
-        <p className="text-zinc-500">{error || (song ? '악보를 찾을 수 없어요' : '불러오는 중…')}</p>
+        <p className="text-zinc-500">
+          {error || (song ? '악보를 찾을 수 없어요' : '불러오는 중…')}
+        </p>
       </main>
     )
   }
@@ -53,36 +56,31 @@ export default function SheetViewerPage({
   const fileUrl = `/api/photos/${sheet.file}`
 
   return (
-    <main className="px-4 pt-8">
-      <BackButton fallback={`/songs/${id}`} />
-      <h1 className="text-lg font-bold">
-        {partEmoji(sheet.part)} {song.title} — {sheet.part} 악보
-      </h1>
-      <p className="mt-0.5 text-xs text-zinc-500">
-        {sheet.filename}
-        {sheet.uploader && ` · ${sheet.uploader}`}
-      </p>
-
+    <div className="fixed inset-0 z-40 overflow-auto bg-black">
       {isPdf ? (
-        <>
-          <iframe
-            src={fileUrl}
-            className="mt-3 h-[72vh] w-full rounded-2xl bg-white"
-            title="악보 PDF"
-          />
-          <a
-            href={fileUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 block rounded-xl bg-surface py-2.5 text-center text-sm text-brand"
-          >
-            전체 화면이 필요하면 새 창에서 열기 ↗
-          </a>
-        </>
+        <iframe src={fileUrl} className="h-full w-full bg-white" title="악보 PDF" />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={fileUrl} alt="악보" className="mt-3 w-full rounded-2xl" />
+        <img src={fileUrl} alt="악보" className="w-full" />
       )}
-    </main>
+
+      {/* 플로팅 뒤로가기 */}
+      <button
+        type="button"
+        aria-label="뒤로가기"
+        onClick={() => {
+          if (window.history.length > 1) router.back()
+          else router.push(`/songs/${id}`)
+        }}
+        className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-2xl text-white backdrop-blur active:bg-black/80"
+      >
+        ‹
+      </button>
+
+      {/* 곡 정보 플로팅 라벨 */}
+      <div className="fixed right-4 top-4 z-50 max-w-[60%] truncate rounded-full bg-black/60 px-3 py-2 text-xs text-white backdrop-blur">
+        {song.title} · {sheet.part}
+      </div>
+    </div>
   )
 }

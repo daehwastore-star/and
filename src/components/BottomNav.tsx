@@ -13,6 +13,8 @@ const TABS = [
 
 export default function BottomNav() {
   const pathname = usePathname()
+  // 악보 전체화면 뷰어에서는 탭바 숨김
+  if (pathname.includes('/sheet/')) return null
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-lg">
