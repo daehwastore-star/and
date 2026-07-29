@@ -3,6 +3,7 @@
 import BackButton from '@/components/BackButton'
 import { use, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { SHEET_PARTS, partEmoji } from '@/lib/sheets'
 import { fmtDate } from '@/lib/format'
 import { getMyId } from '@/lib/identity'
@@ -178,12 +179,7 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
                 className="flex items-center gap-3 border-b border-zinc-100 px-3 py-2.5 last:border-0"
               >
                 <span className="text-xl">{partEmoji(s.part)}</span>
-                <a
-                  href={`/api/photos/${s.file}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="min-w-0 flex-1"
-                >
+                <Link href={`/songs/${id}/sheet/${s.id}`} className="min-w-0 flex-1">
                   <span className="block text-sm font-medium">
                     {s.part} <span className="text-brand">열기 ›</span>
                   </span>
@@ -191,7 +187,7 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
                     {s.filename}
                     {s.uploader && ` · ${s.uploader}`} · {fmtDate(s.createdAt)}
                   </span>
-                </a>
+                </Link>
                 <button
                   type="button"
                   onClick={() => removeSheet(s)}
