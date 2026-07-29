@@ -131,7 +131,7 @@ export default function PdfViewer({ url }: { url: string }) {
         <button
           type="button"
           onClick={toggleMode}
-          className="fixed bottom-5 right-4 z-50 rounded-full bg-black/60 px-3.5 py-2 text-xs font-semibold text-white backdrop-blur active:bg-black/80"
+          className="fixed right-4 top-4 z-50 rounded-full bg-black/60 px-3.5 py-2.5 text-xs font-semibold text-white backdrop-blur active:bg-black/80"
         >
           {mode === 'swipe' ? '↕ 아래로 보기' : '↔ 한장씩 보기'}
         </button>
