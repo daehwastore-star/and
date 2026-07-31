@@ -16,6 +16,7 @@ model Member {
   sortOrder   Int     @default(0)
   roles       String? // 담당 역할 (쉼표 구분: "보컬,일렉기타")
   photo       String? // 프로필 사진 파일명 (uploads/ 폴더)
+  bio         String? // 간단한 자기소개
 
   attendances Attendance[]
   votes       PollVote[]

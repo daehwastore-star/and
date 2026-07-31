@@ -8,6 +8,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json()
   const data: Record<string, unknown> = {}
 
+  if (typeof body.bio === 'string') data.bio = body.bio.trim().slice(0, 200) || null
+
   if (Array.isArray(body.roles)) {
     const target = await prisma.member.findUnique({ where: { id } })
     if (!target) return NextResponse.json({ error: 'Not found' }, { status: 404 })

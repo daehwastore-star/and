@@ -182,6 +182,11 @@ export default async function Home() {
               <span className="mt-0.5 min-h-4 text-center text-xs text-zinc-500">
                 {m.roles ? m.roles.split(',').join(' · ') : '역할 미정'}
               </span>
+              {m.bio && (
+                <span className="mt-1 line-clamp-2 text-center text-[11px] leading-snug text-zinc-400">
+                  {m.bio}
+                </span>
+              )}
             </Link>
           ))}
         </div>

@@ -11,6 +11,7 @@ interface Member {
   name: string
   roles: string | null
   photo: string | null
+  bio: string | null
   wishes: { songId: string }[]
 }
 
@@ -37,6 +38,7 @@ export default function MemberProfilePage({
   const [member, setMember] = useState<Member | null>(null)
   const [songs, setSongs] = useState<Song[]>([])
   const [roles, setRoles] = useState<Set<string>>(new Set())
+  const [bio, setBio] = useState('')
   const [wishSel, setWishSel] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -105,6 +107,7 @@ export default function MemberProfilePage({
     setMember(m)
     setSongs(songData.songs)
     setRoles(new Set(m.roles ? m.roles.split(',') : []))
+    setBio(m.bio ?? '')
     setWishSel(new Set(m.wishes.map(w => w.songId)))
   }, [id])
 
@@ -127,7 +130,7 @@ export default function MemberProfilePage({
       const res = await fetch(`/api/members/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roles: [...roles], wishSongIds: [...wishSel] }),
+        body: JSON.stringify({ roles: [...roles], bio, wishSongIds: [...wishSel] }),
       })
       if (!res.ok) throw new Error('저장 실패')
       router.push('/')
@@ -227,6 +230,19 @@ export default function MemberProfilePage({
             </button>
           ))}
         </div>
+      </section>
+
+      {/* 자기소개 */}
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold text-zinc-700">✍️ 자기소개</h2>
+        <textarea
+          value={bio}
+          onChange={e => setBio(e.target.value)}
+          rows={2}
+          maxLength={200}
+          placeholder="예: 드럼 8년차, 박자는 내가 지킨다"
+          className="mt-2 w-full rounded-xl bg-surface px-4 py-3 text-base outline-none focus:ring-2 focus:ring-brand"
+        />
       </section>
 
       {/* 합주하고 싶은 곡 */}
