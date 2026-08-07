@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { fmtDateTime, fmtDate } from '@/lib/format'
 import { isVideoFile } from '@/lib/media'
 import { getMyId } from '@/lib/identity'
@@ -158,6 +159,41 @@ export default function JournalPage() {
       <p className="mt-1 text-sm text-zinc-500">
         합주 사진과 순간들을 아카이브로
       </p>
+
+      {/* 이번 주 연습 모아보기 배너 */}
+      {(() => {
+        const kst = (d: string | Date) =>
+          new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' })
+        const today = new Date(kst(new Date()))
+        const monday = new Date(today)
+        monday.setDate(today.getDate() - ((today.getDay() + 6) % 7))
+        const week = new Set(
+          Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(monday)
+            d.setDate(monday.getDate() + i)
+            return d.toISOString().slice(0, 10)
+          }),
+        )
+        const weekPractice = entries.filter(
+          e => e.isPractice && week.has(kst(e.createdAt)),
+        )
+        const people = new Set(weekPractice.map(e => e.author).filter(Boolean)).size
+        return (
+          <Link
+            href="/journal/practice"
+            className="mt-3 flex items-center justify-between rounded-2xl bg-orange-500/10 p-4 active:bg-orange-500/20"
+          >
+            <span className="font-semibold text-orange-600">
+              🔥 이번 주 연습 모아보기
+            </span>
+            <span className="text-sm text-orange-500">
+              {weekPractice.length > 0
+                ? `${people}명 · ${weekPractice.length}개 ›`
+                : '아직 0개 ›'}
+            </span>
+          </Link>
+        )
+      })()}
 
       {/* 작성 폼 */}
       {writing && (
