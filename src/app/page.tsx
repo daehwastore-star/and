@@ -42,7 +42,11 @@ export default async function Home() {
   const journal = await prisma.journalEntry.findMany({
     orderBy: { createdAt: 'desc' },
     take: 3,
-    include: { rehearsal: true, media: { select: { id: true } } },
+    include: {
+      rehearsal: true,
+      media: { select: { id: true } },
+      _count: { select: { likes: true, comments: true } },
+    },
   })
 
   return (
@@ -298,6 +302,12 @@ export default async function Home() {
                     {e.author && ' · '}
                     {fmtDate(e.createdAt)} 올림
                     {e.rehearsal && ` · ${fmtDateTime(e.rehearsal.date)} 합주`}
+                    {(e._count.likes > 0 || e._count.comments > 0) && (
+                      <span className="ml-1.5">
+                        {e._count.likes > 0 && `❤️ ${e._count.likes}`}{' '}
+                        {e._count.comments > 0 && `💬 ${e._count.comments}`}
+                      </span>
+                    )}
                   </p>
                 </div>
               </Link>

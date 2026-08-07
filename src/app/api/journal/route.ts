@@ -13,7 +13,12 @@ const MAX_FILES = 10
 export async function GET() {
   const entries = await prisma.journalEntry.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { rehearsal: true, media: { orderBy: { createdAt: 'asc' } } },
+    include: {
+      rehearsal: true,
+      media: { orderBy: { createdAt: 'asc' } },
+      comments: { orderBy: { createdAt: 'asc' } },
+      likes: { select: { memberId: true } },
+    },
   })
   return NextResponse.json({ entries })
 }

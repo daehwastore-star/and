@@ -63,6 +63,31 @@ model JournalEntry {
 
   rehearsal Rehearsal? @relation(fields: [rehearsalId], references: [id], onDelete: SetNull)
   media     JournalMedia[]
+  comments  JournalComment[]
+  likes     JournalLike[]
+}
+
+// 기록 댓글
+model JournalComment {
+  id        String   @id @default(cuid())
+  entryId   String
+  author    String? // 쓴 사람 이름
+  text      String
+  createdAt DateTime @default(now())
+
+  entry JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+}
+
+// 기록 좋아요 (멤버당 1개)
+model JournalLike {
+  id        String   @id @default(cuid())
+  entryId   String
+  memberId  String
+  createdAt DateTime @default(now())
+
+  entry JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, memberId])
 }
 
 // 기록 첨부 미디어 (사진/영상 여러 개)

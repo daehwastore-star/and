@@ -5,6 +5,12 @@ import { fmtDateTime, fmtDate } from '@/lib/format'
 import { isVideoFile } from '@/lib/media'
 import { getMyId } from '@/lib/identity'
 
+interface Comment {
+  id: string
+  author: string | null
+  text: string
+  createdAt: string
+}
 interface Entry {
   id: string
   text: string | null
@@ -13,6 +19,8 @@ interface Entry {
   createdAt: string
   rehearsal: { id: string; date: string } | null
   media: { id: string; file: string }[]
+  comments: Comment[]
+  likes: { memberId: string }[]
 }
 interface Rehearsal {
   id: string
@@ -34,6 +42,7 @@ export default function JournalPage() {
   const [author, setAuthor] = useState('')
   const [rehearsalId, setRehearsalId] = useState('')
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -87,6 +96,47 @@ export default function JournalPage() {
   const remove = async (id: string) => {
     if (!confirm('이 기록을 삭제할까요?')) return
     await fetch(`/api/journal/${id}`, { method: 'DELETE' })
+    await load()
+  }
+
+  const toggleLike = async (entryId: string) => {
+    const myId = getMyId()
+    if (!myId) return
+    // 낙관적 업데이트
+    setEntries(prev =>
+      prev.map(e => {
+        if (e.id !== entryId) return e
+        const liked = e.likes.some(l => l.memberId === myId)
+        return {
+          ...e,
+          likes: liked
+            ? e.likes.filter(l => l.memberId !== myId)
+            : [...e.likes, { memberId: myId }],
+        }
+      }),
+    )
+    await fetch(`/api/journal/${entryId}/like`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberId: myId }),
+    })
+  }
+
+  const addComment = async (entryId: string) => {
+    const text = (commentDrafts[entryId] ?? '').trim()
+    if (!text) return
+    setCommentDrafts(prev => ({ ...prev, [entryId]: '' }))
+    await fetch(`/api/journal/${entryId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ author, text }),
+    })
+    await load()
+  }
+
+  const removeComment = async (commentId: string) => {
+    if (!confirm('이 댓글을 삭제할까요?')) return
+    await fetch(`/api/journal/comments/${commentId}`, { method: 'DELETE' })
     await load()
   }
 
@@ -227,6 +277,75 @@ export default function JournalPage() {
                     className="text-zinc-400"
                   >
                     삭제
+                  </button>
+                </div>
+
+                {/* 좋아요 */}
+                <div className="mt-3 flex items-center gap-2 border-t border-zinc-100 pt-3">
+                  {(() => {
+                    const myId = getMyId()
+                    const liked = myId ? e.likes.some(l => l.memberId === myId) : false
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => toggleLike(e.id)}
+                        className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ${
+                          liked
+                            ? 'bg-rose-500/10 font-semibold text-rose-500'
+                            : 'bg-surface-2 text-zinc-600'
+                        }`}
+                      >
+                        {liked ? '❤️' : '🤍'} {e.likes.length > 0 && e.likes.length}
+                      </button>
+                    )
+                  })()}
+                  <span className="text-sm text-zinc-400">💬 {e.comments.length}</span>
+                </div>
+
+                {/* 댓글 목록 */}
+                {e.comments.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {e.comments.map(c => (
+                      <div key={c.id} className="flex items-start gap-2 text-sm">
+                        <span className="shrink-0 font-semibold text-zinc-700">
+                          {c.author ?? '익명'}
+                        </span>
+                        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+                          {c.text}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeComment(c.id)}
+                          className="shrink-0 text-xs text-zinc-300"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 댓글 입력 */}
+                <div className="mt-2 flex gap-1.5">
+                  <input
+                    type="text"
+                    value={commentDrafts[e.id] ?? ''}
+                    onChange={ev =>
+                      setCommentDrafts(prev => ({ ...prev, [e.id]: ev.target.value }))
+                    }
+                    onKeyDown={ev => {
+                      if (ev.key === 'Enter') addComment(e.id)
+                    }}
+                    placeholder="댓글 달기…"
+                    className="min-w-0 flex-1 rounded-full bg-surface-2 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-brand"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addComment(e.id)}
+                    disabled={!(commentDrafts[e.id] ?? '').trim()}
+                    className="shrink-0 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                  >
+                    등록
                   </button>
                 </div>
               </div>
