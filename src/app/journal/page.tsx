@@ -12,6 +12,7 @@ interface Entry {
   author: string | null
   createdAt: string
   rehearsal: { id: string; date: string } | null
+  media: { id: string; file: string }[]
 }
 interface Rehearsal {
   id: string
@@ -32,7 +33,7 @@ export default function JournalPage() {
   const [text, setText] = useState('')
   const [author, setAuthor] = useState('')
   const [rehearsalId, setRehearsalId] = useState('')
-  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoFiles, setPhotoFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -59,7 +60,7 @@ export default function JournalPage() {
 
   const submit = async () => {
     setError('')
-    if (!text.trim() && !photoFile)
+    if (!text.trim() && photoFiles.length === 0)
       return setError('사진이나 내용을 하나는 넣어주세요')
     setSaving(true)
     try {
@@ -67,12 +68,12 @@ export default function JournalPage() {
       form.append('text', text)
       form.append('author', author)
       form.append('rehearsalId', rehearsalId)
-      if (photoFile) form.append('photo', photoFile)
+      for (const f of photoFiles) form.append('photo', f)
       const res = await fetch('/api/journal', { method: 'POST', body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || '저장 실패')
       setText('')
-      setPhotoFile(null)
+      setPhotoFiles([])
       setRehearsalId('')
       setWriting(false)
       await load()
@@ -134,12 +135,16 @@ export default function JournalPage() {
           />
 
           <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-zinc-700">
-            📷 {photoFile ? photoFile.name : '사진/영상 추가 (선택)'}
+            📷{' '}
+            {photoFiles.length > 0
+              ? `${photoFiles.length}개 선택됨 — 탭해서 다시 고르기`
+              : '사진/영상 추가 (여러 장 가능)'}
             <input
               type="file"
               accept="image/*,video/*"
+              multiple
               className="hidden"
-              onChange={e => setPhotoFile(e.target.files?.[0] ?? null)}
+              onChange={e => setPhotoFiles(Array.from(e.target.files ?? []).slice(0, 10))}
             />
           </label>
 
@@ -165,22 +170,40 @@ export default function JournalPage() {
         <div className="mt-4 space-y-3">
           {entries.map(e => (
             <article key={e.id} className="overflow-hidden rounded-2xl bg-surface">
-              {e.photo &&
-                (isVideoFile(e.photo) ? (
-                  <video
-                    src={`/api/photos/${e.photo}`}
-                    controls
-                    playsInline
-                    className="max-h-96 w-full bg-black"
-                  />
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/api/photos/${e.photo}`}
-                    alt=""
-                    className="max-h-96 w-full object-cover"
-                  />
-                ))}
+              {(() => {
+                const files =
+                  e.media.length > 0 ? e.media.map(m => m.file) : e.photo ? [e.photo] : []
+                if (files.length === 0) return null
+                return (
+                  <div className={files.length > 1 ? 'grid grid-cols-2 gap-0.5' : ''}>
+                    {files.map(f =>
+                      isVideoFile(f) ? (
+                        <video
+                          key={f}
+                          src={`/api/photos/${f}`}
+                          controls
+                          playsInline
+                          className={`w-full bg-black ${
+                            files.length > 1 ? 'col-span-2 max-h-80' : 'max-h-96'
+                          }`}
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={f}
+                          src={`/api/photos/${f}`}
+                          alt=""
+                          className={
+                            files.length > 1
+                              ? 'aspect-square w-full object-cover'
+                              : 'max-h-96 w-full object-cover'
+                          }
+                        />
+                      ),
+                    )}
+                  </div>
+                )
+              })()}
               <div className="p-4">
                 {e.text && <p className="whitespace-pre-wrap">{e.text}</p>}
                 <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">

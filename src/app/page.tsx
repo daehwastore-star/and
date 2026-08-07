@@ -42,7 +42,7 @@ export default async function Home() {
   const journal = await prisma.journalEntry.findMany({
     orderBy: { createdAt: 'desc' },
     take: 3,
-    include: { rehearsal: true },
+    include: { rehearsal: true, media: { select: { id: true } } },
   })
 
   return (
@@ -259,22 +259,30 @@ export default async function Home() {
                 href="/journal"
                 className="block overflow-hidden rounded-2xl bg-surface active:bg-surface-2"
               >
-                {e.photo &&
-                  (isVideoFile(e.photo) ? (
-                    <video
-                      src={`/api/photos/${e.photo}`}
-                      controls
-                      playsInline
-                      className="max-h-80 w-full bg-black"
-                    />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`/api/photos/${e.photo}`}
-                      alt=""
-                      className="max-h-80 w-full object-cover"
-                    />
-                  ))}
+                {e.photo && (
+                  <div className="relative">
+                    {isVideoFile(e.photo) ? (
+                      <video
+                        src={`/api/photos/${e.photo}`}
+                        controls
+                        playsInline
+                        className="max-h-80 w-full bg-black"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/photos/${e.photo}`}
+                        alt=""
+                        className="max-h-80 w-full object-cover"
+                      />
+                    )}
+                    {e.media.length > 1 && (
+                      <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs font-semibold text-white">
+                        +{e.media.length - 1}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="p-4">
                   {e.text && <p className="line-clamp-2 whitespace-pre-wrap">{e.text}</p>}
                   <p className="mt-1.5 text-xs text-zinc-500">

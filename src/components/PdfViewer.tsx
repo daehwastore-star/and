@@ -32,7 +32,8 @@ export default function PdfViewer({ url }: { url: string }) {
     let cancelled = false
     ;(async () => {
       try {
-        const pdfjs = await import('pdfjs-dist')
+        // legacy 빌드: 아이폰 사파리 등 구형 브라우저 호환
+        const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
         pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
         const doc = await pdfjs.getDocument({ url }).promise
         if (cancelled) return
@@ -68,7 +69,8 @@ export default function PdfViewer({ url }: { url: string }) {
           await page.render({ canvas, canvasContext: ctx, viewport }).promise
         }
         setStatus('ok')
-      } catch {
+      } catch (e) {
+        console.error('[PdfViewer]', e)
         if (!cancelled) setStatus('error')
       }
     })()

@@ -8,25 +8,30 @@ const ALLOWED_EXT = [
   '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', // 사진
   '.mp4', '.mov', '.webm', '.m4v', // 영상
 ]
+const MAX_FILES = 10
 
 export async function GET() {
   const entries = await prisma.journalEntry.findMany({
     orderBy: { createdAt: 'desc' },
-    include: { rehearsal: true },
+    include: { rehearsal: true, media: { orderBy: { createdAt: 'asc' } } },
   })
   return NextResponse.json({ entries })
 }
 
-// FormData: text?, author?, rehearsalId?, photo?(File)
+// FormData: text?, author?, rehearsalId?, photo?(File, 여러 개 가능)
 export async function POST(req: NextRequest) {
   const form = await req.formData()
   const text = String(form.get('text') ?? '').trim() || null
   const author = String(form.get('author') ?? '').trim() || null
   const rehearsalId = String(form.get('rehearsalId') ?? '').trim() || null
-  const file = form.get('photo')
 
-  let photo: string | null = null
-  if (file instanceof File && file.size > 0) {
+  const files = form
+    .getAll('photo')
+    .filter((f): f is File => f instanceof File && f.size > 0)
+    .slice(0, MAX_FILES)
+
+  const saved: string[] = []
+  for (const file of files) {
     if (file.size > 200 * 1024 * 1024)
       return NextResponse.json({ error: '200MB 이하 파일만 올릴 수 있어요' }, { status: 400 })
     const ext = extname(file.name).toLowerCase() || '.jpg'
@@ -34,11 +39,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '사진이나 영상 파일만 올릴 수 있어요' }, { status: 400 })
     const dir = join(process.cwd(), 'uploads')
     await mkdir(dir, { recursive: true })
-    photo = `${randomUUID()}${ext}`
-    await writeFile(join(dir, photo), Buffer.from(await file.arrayBuffer()))
+    const name = `${randomUUID()}${ext}`
+    await writeFile(join(dir, name), Buffer.from(await file.arrayBuffer()))
+    saved.push(name)
   }
 
-  if (!text && !photo)
+  if (!text && saved.length === 0)
     return NextResponse.json({ error: '사진이나 내용을 하나는 넣어주세요' }, { status: 400 })
 
   // rehearsalId 유효성 확인 (없으면 null로 저장)
@@ -47,8 +53,14 @@ export async function POST(req: NextRequest) {
     : null
 
   const entry = await prisma.journalEntry.create({
-    data: { text, author, photo, rehearsalId: rehearsal?.id ?? null },
-    include: { rehearsal: true },
+    data: {
+      text,
+      author,
+      photo: saved[0] ?? null, // 대표 미디어 (하위 호환)
+      rehearsalId: rehearsal?.id ?? null,
+      media: { create: saved.map(file => ({ file })) },
+    },
+    include: { rehearsal: true, media: true },
   })
   return NextResponse.json({ ok: true, entry })
 }

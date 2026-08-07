@@ -62,6 +62,17 @@ model JournalEntry {
   createdAt   DateTime @default(now())
 
   rehearsal Rehearsal? @relation(fields: [rehearsalId], references: [id], onDelete: SetNull)
+  media     JournalMedia[]
+}
+
+// 기록 첨부 미디어 (사진/영상 여러 개)
+model JournalMedia {
+  id        String   @id @default(cuid())
+  entryId   String
+  file      String // uploads/ 폴더 파일명
+  createdAt DateTime @default(now())
+
+  entry JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
 }
 
 // 푸시 알림 구독 (기기별)
