@@ -96,6 +96,7 @@ model JournalMedia {
   id        String   @id @default(cuid())
   entryId   String
   file      String // uploads/ 폴더 파일명
+  preview   String? // 영상 앞 3초 GIF 미리보기 파일명
   createdAt DateTime @default(now())
 
   entry JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)

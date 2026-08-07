@@ -11,7 +11,7 @@ interface Entry {
   author: string | null
   isPractice: boolean
   createdAt: string
-  media: { id: string; file: string }[]
+  media: { id: string; file: string; preview: string | null }[]
 }
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -36,6 +36,7 @@ function weekDates(offset: number): string[] {
 export default function PracticeWeekPage() {
   const [entries, setEntries] = useState<Entry[]>([])
   const [offset, setOffset] = useState(0)
+  const [playing, setPlaying] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetch('/api/journal')
@@ -98,14 +99,35 @@ export default function PracticeWeekPage() {
             const files =
               e.media.length > 0 ? e.media.map(m => m.file) : e.photo ? [e.photo] : []
             const video = files.find(isVideoFile)
+            const gif = video
+              ? e.media.find(m => m.file === video)?.preview ?? null
+              : null
             const day = new Date(kstDay(e.createdAt) + 'T00:00:00')
             return (
               <div key={e.id} className="overflow-hidden rounded-2xl bg-surface">
-                {video ? (
+                {video && gif && !playing.has(e.id) ? (
+                  <button
+                    type="button"
+                    className="relative block w-full"
+                    onClick={() => setPlaying(prev => new Set(prev).add(e.id))}
+                  >
+                    {/* GIF 미리보기 (자동 재생) — 탭하면 원본 영상 */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/api/photos/${gif}`}
+                      alt=""
+                      className="aspect-[3/4] w-full bg-black object-cover"
+                    />
+                    <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-1 text-xs text-white">
+                      ▶ 소리 켜기
+                    </span>
+                  </button>
+                ) : video ? (
                   <video
                     src={`/api/photos/${video}`}
                     controls
                     playsInline
+                    autoPlay={playing.has(e.id)}
                     preload="metadata"
                     className="aspect-[3/4] w-full bg-black object-cover"
                   />

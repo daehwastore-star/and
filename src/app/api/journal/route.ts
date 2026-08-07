@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { writeFile, mkdir } from 'fs/promises'
 import { join, extname } from 'path'
 import { randomUUID } from 'crypto'
+import { makeGifPreview } from '@/lib/gif'
 
 const ALLOWED_EXT = [
   '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', // 사진
@@ -47,7 +48,8 @@ export async function POST(req: NextRequest) {
       )
   }
 
-  const saved: string[] = []
+  const VIDEO_EXTS = ['.mp4', '.mov', '.webm', '.m4v']
+  const saved: { file: string; preview: string | null }[] = []
   for (const file of files) {
     if (file.size > 200 * 1024 * 1024)
       return NextResponse.json({ error: '200MB 이하 파일만 올릴 수 있어요' }, { status: 400 })
@@ -58,11 +60,14 @@ export async function POST(req: NextRequest) {
     await mkdir(dir, { recursive: true })
     const name = `${randomUUID()}${ext}`
     await writeFile(join(dir, name), Buffer.from(await file.arrayBuffer()))
-    saved.push(name)
+    // 영상은 앞 3초 GIF 미리보기 생성 (실패해도 업로드는 계속)
+    const preview = VIDEO_EXTS.includes(ext) ? await makeGifPreview(name) : null
+    saved.push({ file: name, preview })
   }
 
   if (!text && saved.length === 0)
     return NextResponse.json({ error: '사진이나 내용을 하나는 넣어주세요' }, { status: 400 })
+
 
   // rehearsalId 유효성 확인 (없으면 null로 저장)
   const rehearsal = rehearsalId
@@ -74,9 +79,9 @@ export async function POST(req: NextRequest) {
       text,
       author,
       isPractice,
-      photo: saved[0] ?? null, // 대표 미디어 (하위 호환)
+      photo: saved[0]?.file ?? null, // 대표 미디어 (하위 호환)
       rehearsalId: rehearsal?.id ?? null,
-      media: { create: saved.map(file => ({ file })) },
+      media: { create: saved.map(s => ({ file: s.file, preview: s.preview })) },
     },
     include: { rehearsal: true, media: true },
   })
