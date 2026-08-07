@@ -16,6 +16,7 @@ interface Entry {
   text: string | null
   photo: string | null
   author: string | null
+  isPractice: boolean
   createdAt: string
   rehearsal: { id: string; date: string } | null
   media: { id: string; file: string }[]
@@ -38,6 +39,7 @@ export default function JournalPage() {
   const [rehearsals, setRehearsals] = useState<Rehearsal[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [writing, setWriting] = useState(false)
+  const [isPractice, setIsPractice] = useState(false)
   const [text, setText] = useState('')
   const [author, setAuthor] = useState('')
   const [rehearsalId, setRehearsalId] = useState('')
@@ -76,7 +78,8 @@ export default function JournalPage() {
       const form = new FormData()
       form.append('text', text)
       form.append('author', author)
-      form.append('rehearsalId', rehearsalId)
+      form.append('rehearsalId', isPractice ? '' : rehearsalId)
+      form.append('isPractice', isPractice ? '1' : '0')
       for (const f of photoFiles) form.append('photo', f)
       const res = await fetch('/api/journal', { method: 'POST', body: form })
       const data = await res.json()
@@ -159,44 +162,89 @@ export default function JournalPage() {
       {/* 작성 폼 */}
       {writing && (
         <section className="mt-4 space-y-3 rounded-2xl bg-surface p-4">
-          <div>
-            <label className="text-sm font-semibold text-zinc-700">어느 합주?</label>
-            <select
-              value={rehearsalId}
-              onChange={e => setRehearsalId(e.target.value)}
-              className="mt-1 w-full rounded-xl bg-surface-2 px-3 py-2.5 text-sm outline-none"
-            >
-              <option value="">일반 기록 (합주 무관)</option>
-              {rehearsals.map(r => (
-                <option key={r.id} value={r.id}>
-                  {fmtDateTime(r.date)}
-                  {r.memo ? ` · ${r.memo}` : ''}
-                </option>
-              ))}
-            </select>
+          {/* 일반 기록 / 연습 인증 전환 */}
+          <div className="flex gap-2">
+            {([false, true] as const).map(v => (
+              <button
+                key={String(v)}
+                type="button"
+                onClick={() => {
+                  setIsPractice(v)
+                  setPhotoFiles([])
+                }}
+                className={`flex-1 rounded-xl py-2.5 text-sm font-semibold ${
+                  isPractice === v
+                    ? v
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-brand text-white'
+                    : 'bg-surface-2 text-zinc-600'
+                }`}
+              >
+                {v ? '🔥 연습 인증' : '📔 일반 기록'}
+              </button>
+            ))}
           </div>
+
+          {!isPractice && (
+            <div>
+              <label className="text-sm font-semibold text-zinc-700">어느 합주?</label>
+              <select
+                value={rehearsalId}
+                onChange={e => setRehearsalId(e.target.value)}
+                className="mt-1 w-full rounded-xl bg-surface-2 px-3 py-2.5 text-sm outline-none"
+              >
+                <option value="">일반 기록 (합주 무관)</option>
+                {rehearsals.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {fmtDateTime(r.date)}
+                    {r.memo ? ` · ${r.memo}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
             rows={3}
-            placeholder="오늘 합주 어땠나요? (예: 드디어 후렴 맞췄다!!)"
+            placeholder={
+              isPractice
+                ? '오늘 뭐 연습했나요? (예: 시퍼런 봄 솔로 구간 30번 돌림)'
+                : '오늘 합주 어땠나요? (예: 드디어 후렴 맞췄다!!)'
+            }
             className="w-full rounded-xl bg-surface-2 px-4 py-3 text-base outline-none focus:ring-2 focus:ring-brand"
           />
 
-          <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-zinc-700">
-            📷{' '}
-            {photoFiles.length > 0
-              ? `${photoFiles.length}개 선택됨 — 탭해서 다시 고르기`
-              : '사진/영상 추가 (여러 장 가능)'}
-            <input
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              className="hidden"
-              onChange={e => setPhotoFiles(Array.from(e.target.files ?? []).slice(0, 10))}
-            />
-          </label>
+          {isPractice ? (
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-orange-500/10 px-4 py-3 text-sm font-semibold text-orange-600">
+              📹{' '}
+              {photoFiles.length > 0
+                ? `영상 촬영됨 ✓ — 탭해서 다시 찍기`
+                : '지금 바로 촬영해서 인증 (카메라만 가능)'}
+              <input
+                type="file"
+                accept="video/*"
+                capture="environment"
+                className="hidden"
+                onChange={e => setPhotoFiles(Array.from(e.target.files ?? []).slice(0, 1))}
+              />
+            </label>
+          ) : (
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-zinc-700">
+              📷{' '}
+              {photoFiles.length > 0
+                ? `${photoFiles.length}개 선택됨 — 탭해서 다시 고르기`
+                : '사진/영상 추가 (여러 장 가능)'}
+              <input
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                className="hidden"
+                onChange={e => setPhotoFiles(Array.from(e.target.files ?? []).slice(0, 10))}
+              />
+            </label>
+          )}
 
           {error && <p className="text-sm text-red-500">{error}</p>}
           <button
@@ -255,6 +303,11 @@ export default function JournalPage() {
                 )
               })()}
               <div className="p-4">
+                {e.isPractice && (
+                  <span className="mb-1.5 inline-block rounded-full bg-orange-500/10 px-2.5 py-0.5 text-xs font-bold text-orange-600">
+                    🔥 연습 인증
+                  </span>
+                )}
                 {e.text && <p className="whitespace-pre-wrap">{e.text}</p>}
                 <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
                   <span>

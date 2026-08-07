@@ -39,6 +39,25 @@ export default async function Home() {
     include: { sheets: { select: { part: true } } },
   })
   const songTotal = await prisma.song.count({ where: { inRepertoire: true } })
+  // 이번 달(KST) 연습 인증 집계 — 1일 1회 카운트
+  const kstDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' })
+  const monthKst = kstDay(now).slice(0, 7)
+  const monthStart = new Date(`${monthKst}-01T00:00:00+09:00`)
+  const practiceEntries = await prisma.journalEntry.findMany({
+    where: { isPractice: true, createdAt: { gte: monthStart } },
+    select: { author: true, createdAt: true },
+  })
+  const practiceDays = new Map<string, Set<string>>()
+  for (const p of practiceEntries) {
+    if (!p.author) continue
+    if (!practiceDays.has(p.author)) practiceDays.set(p.author, new Set())
+    practiceDays.get(p.author)!.add(kstDay(p.createdAt))
+  }
+  const practiceRanking = members
+    .map(m => ({ name: m.name, count: practiceDays.get(m.name)?.size ?? 0 }))
+    .sort((a, b) => b.count - a.count)
+  const maxPractice = Math.max(1, ...practiceRanking.map(x => x.count))
+
   const journal = await prisma.journalEntry.findMany({
     orderBy: { createdAt: 'desc' },
     take: 3,
@@ -197,6 +216,39 @@ export default async function Home() {
         <p className="mt-1.5 text-xs text-zinc-400">
           프로필을 탭하면 사진과 역할을 바꿀 수 있어요
         </p>
+      </section>
+
+      {/* 이번 달 연습 인증 */}
+      <section className="mt-4 rounded-2xl bg-surface p-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-base font-semibold">🔥 이번 달 연습</h2>
+          <span className="text-xs text-zinc-400">
+            기록 탭에서 영상으로 인증 · 1일 1회
+          </span>
+        </div>
+        {practiceEntries.length === 0 ? (
+          <p className="mt-2 text-sm text-zinc-500">
+            아직 인증이 없어요. 기록 탭에서 🔥 연습 인증으로 올려보세요!
+          </p>
+        ) : (
+          <div className="mt-3 space-y-1.5">
+            {practiceRanking.map((x, i) => (
+              <div key={x.name} className="flex items-center gap-2 text-sm">
+                <span className="w-14 shrink-0">
+                  {i === 0 && x.count > 0 ? '👑 ' : ''}
+                  {x.name}
+                </span>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className="h-full rounded-full bg-orange-500"
+                    style={{ width: `${(x.count / maxPractice) * 100}%` }}
+                  />
+                </div>
+                <span className="w-10 shrink-0 text-right text-zinc-500">{x.count}일</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 합주곡 */}

@@ -59,6 +59,7 @@ model JournalEntry {
   text        String?
   photo       String? // uploads/ 폴더 파일명
   author      String? // 남긴 사람 이름
+  isPractice  Boolean  @default(false) // 🔥 개인 연습 인증 (현장 촬영 영상)
   createdAt   DateTime @default(now())
 
   rehearsal Rehearsal? @relation(fields: [rehearsalId], references: [id], onDelete: SetNull)

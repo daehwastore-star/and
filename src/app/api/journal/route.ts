@@ -29,11 +29,23 @@ export async function POST(req: NextRequest) {
   const text = String(form.get('text') ?? '').trim() || null
   const author = String(form.get('author') ?? '').trim() || null
   const rehearsalId = String(form.get('rehearsalId') ?? '').trim() || null
+  const isPractice = String(form.get('isPractice') ?? '') === '1'
 
   const files = form
     .getAll('photo')
     .filter((f): f is File => f instanceof File && f.size > 0)
     .slice(0, MAX_FILES)
+
+  // 연습 인증은 현장 촬영 영상 필수
+  if (isPractice) {
+    const VIDEO = ['.mp4', '.mov', '.webm', '.m4v']
+    const hasVideo = files.some(f => VIDEO.includes(extname(f.name).toLowerCase()))
+    if (!hasVideo)
+      return NextResponse.json(
+        { error: '연습 인증은 지금 촬영한 영상이 필요해요 📹' },
+        { status: 400 },
+      )
+  }
 
   const saved: string[] = []
   for (const file of files) {
@@ -61,6 +73,7 @@ export async function POST(req: NextRequest) {
     data: {
       text,
       author,
+      isPractice,
       photo: saved[0] ?? null, // 대표 미디어 (하위 호환)
       rehearsalId: rehearsal?.id ?? null,
       media: { create: saved.map(file => ({ file })) },

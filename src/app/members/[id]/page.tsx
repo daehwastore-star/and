@@ -1,6 +1,7 @@
 'use client'
 
 import BackButton from '@/components/BackButton'
+import Calendar from '@/components/Calendar'
 import { use, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -39,6 +40,7 @@ export default function MemberProfilePage({
   const [songs, setSongs] = useState<Song[]>([])
   const [roles, setRoles] = useState<Set<string>>(new Set())
   const [bio, setBio] = useState('')
+  const [practiceDates, setPracticeDates] = useState<string[]>([])
   const [wishSel, setWishSel] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -109,6 +111,17 @@ export default function MemberProfilePage({
     setRoles(new Set(m.roles ? m.roles.split(',') : []))
     setBio(m.bio ?? '')
     setWishSel(new Set(m.wishes.map(w => w.songId)))
+    // 내 연습 인증 날짜
+    fetch('/api/journal')
+      .then(r => r.json())
+      .then(d =>
+        setPracticeDates(
+          (d.entries as { isPractice: boolean; author: string | null; createdAt: string }[])
+            .filter(e => e.isPractice && e.author === m.name)
+            .map(e => e.createdAt),
+        ),
+      )
+      .catch(() => {})
   }, [id])
 
   useEffect(() => {
@@ -229,6 +242,44 @@ export default function MemberProfilePage({
               {r}
             </button>
           ))}
+        </div>
+      </section>
+
+      {/* 연습 기록 */}
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold text-zinc-700">🔥 연습 기록</h2>
+        {(() => {
+          const kst = (d: string) =>
+            new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' })
+          const days = [...new Set(practiceDates.map(kst))].sort()
+          const month = new Date()
+            .toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' })
+            .slice(0, 7)
+          const monthCount = days.filter(d => d.startsWith(month)).length
+          let streak = 0
+          let cur = 0
+          for (let i = 0; i < days.length; i++) {
+            cur =
+              i > 0 &&
+              new Date(days[i]).getTime() - new Date(days[i - 1]).getTime() === 86400000
+                ? cur + 1
+                : 1
+            streak = Math.max(streak, cur)
+          }
+          return (
+            <p className="mt-1 text-xs text-zinc-500">
+              이번 달 <b className="text-orange-600">{monthCount}일</b> 연습
+              {streak > 1 && (
+                <>
+                  {' '}
+                  · 최장 연속 <b className="text-orange-600">{streak}일</b> 🔥
+                </>
+              )}
+            </p>
+          )
+        })()}
+        <div className="mt-2">
+          <Calendar eventDates={practiceDates} />
         </div>
       </section>
 
