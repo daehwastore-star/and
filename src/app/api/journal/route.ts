@@ -49,13 +49,23 @@ export async function POST(req: NextRequest) {
   }
 
   const VIDEO_EXTS = ['.mp4', '.mov', '.webm', '.m4v']
-  const saved: { file: string; preview: string | null; thumb: string | null }[] = []
-  for (const file of files) {
+
+  // ── 저장하기 전에 전부 검사한다 ──
+  // 예전엔 한 장씩 "검사 → 저장" 을 반복했다. 그러면 세 번째 파일이 퇴짜를 맞을 때
+  // 앞의 두 장은 이미 디스크에 쓰인 뒤라, 글은 안 만들어졌는데 파일만 주인 없이 남았다
+  // (2026-08-08 uploads 에 고아 파일 6개 11MB 발견). 하나라도 걸리면 아무것도 쓰지 않는다.
+  const incoming = files.map(f => ({ file: f, ext: extname(f.name).toLowerCase() || '.jpg' }))
+  for (const { file, ext } of incoming) {
     if (file.size > 200 * 1024 * 1024)
       return NextResponse.json({ error: '200MB 이하 파일만 올릴 수 있어요' }, { status: 400 })
-    const ext = extname(file.name).toLowerCase() || '.jpg'
     if (!ALLOWED_EXT.includes(ext))
       return NextResponse.json({ error: '사진이나 영상 파일만 올릴 수 있어요' }, { status: 400 })
+  }
+  if (!text && incoming.length === 0)
+    return NextResponse.json({ error: '사진이나 내용을 하나는 넣어주세요' }, { status: 400 })
+
+  const saved: { file: string; preview: string | null; thumb: string | null }[] = []
+  for (const { file, ext } of incoming) {
     const dir = join(process.cwd(), 'uploads')
     await mkdir(dir, { recursive: true })
     const name = `${randomUUID()}${ext}`
@@ -68,10 +78,6 @@ export async function POST(req: NextRequest) {
     const preview = isVideo ? await makeGifPreview(name) : null
     saved.push({ file: name, preview, thumb })
   }
-
-  if (!text && saved.length === 0)
-    return NextResponse.json({ error: '사진이나 내용을 하나는 넣어주세요' }, { status: 400 })
-
 
   // rehearsalId 유효성 확인 (없으면 null로 저장)
   const rehearsal = rehearsalId

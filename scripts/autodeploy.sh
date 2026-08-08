@@ -30,12 +30,27 @@ nice -n 15 npm install --no-audit --no-fund
 npx prisma db push
 npx prisma generate
 
-# 빌드 flake 대비 최대 3회 재시도
-for i in 1 2 3; do
-  rm -rf .next
-  nice -n 15 npm run build && [ -f .next/BUILD_ID ] && break
+# 빌드 flake 대비 최대 2회 재시도.
+# 빌드는 반드시 /opt/safe-build.sh 를 거친다 — web·admin 과 같은 자물쇠(한 번에 하나)와
+# 메모리·스왑 상한을 함께 받기 위해서다. 예전엔 band 만 이 규칙 밖에 있어서,
+# web/admin 빌드가 도는 중에 5분 주기로 끼어들 수 있었다
+# (2026-08-06 14:30:01 band 부하 높음 연기 → 9초 뒤 admin 빌드 OOM 사망).
+# 아래 load 검사는 1분 평균이라 방금 시작한 빌드를 못 잡는다 — 자물쇠가 진짜 방어다.
+# 앱은 켜둔 채 옆(.next-new)에서 짓고, 다 됐을 때만 갈아끼운다.
+# 예전엔 .next 를 먼저 지우고 빌드했는데, 자물쇠를 기다리는 동안(최대 20분)
+# band 사이트가 통째로 내려간다. web 배포와 같은 무중단 방식으로 맞춘다.
+built=""
+for i in 1 2; do
+  rm -rf .next-new
+  NEXT_DIST_DIR=.next-new /opt/safe-build.sh /opt/band build && [ -f .next-new/BUILD_ID ] && { built=1; break; }
   echo "⚠️  build incomplete, retry $i"
 done
+if [ -n "$built" ]; then
+  rm -rf .next-prev
+  [ -d .next ] && mv .next .next-prev
+  mv .next-new .next
+  rm -rf .next-prev
+fi
 [ -f .next/BUILD_ID ] || { echo "❌ 빌드 실패, 재시작 건너뜀"; exit 1; }
 
 pm2 restart band 2>/dev/null || pm2 start npm --name band -- start -- -p 3002
