@@ -97,6 +97,7 @@ model JournalMedia {
   entryId   String
   file      String // uploads/ 폴더 파일명
   preview   String? // 영상 앞 3초 GIF 미리보기 파일명
+  thumb     String? // 영상 정지 썸네일(JPEG) 파일명 — 목록의 poster
   createdAt DateTime @default(now())
 
   entry JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)

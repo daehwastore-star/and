@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { fmtDateTime, fmtDate } from '@/lib/format'
-import { isVideoFile } from '@/lib/media'
+import { isVideoFile, posterUrl } from '@/lib/media'
 import { getMyId } from '@/lib/identity'
 
 interface Comment {
@@ -20,7 +20,7 @@ interface Entry {
   isPractice: boolean
   createdAt: string
   rehearsal: { id: string; date: string } | null
-  media: { id: string; file: string }[]
+  media: { id: string; file: string; thumb: string | null }[]
   comments: Comment[]
   likes: { memberId: string }[]
 }
@@ -315,8 +315,11 @@ export default function JournalPage() {
                         <video
                           key={f}
                           src={`/api/photos/${f}`}
+                          // 썸네일이 없으면 모바일에서 검은 네모만 보인다
+                          poster={posterUrl(e.media, f)}
                           controls
                           playsInline
+                          preload="metadata"
                           className={`w-full bg-black ${
                             files.length > 1 ? 'col-span-2 max-h-80' : 'max-h-96'
                           }`}

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import BackButton from '@/components/BackButton'
-import { isVideoFile } from '@/lib/media'
+import { isVideoFile, posterUrl } from '@/lib/media'
 
 interface Entry {
   id: string
@@ -11,7 +11,7 @@ interface Entry {
   author: string | null
   isPractice: boolean
   createdAt: string
-  media: { id: string; file: string; preview: string | null }[]
+  media: { id: string; file: string; preview: string | null; thumb: string | null }[]
 }
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -125,6 +125,8 @@ export default function PracticeWeekPage() {
                 ) : video ? (
                   <video
                     src={`/api/photos/${video}`}
+                    // GIF 가 없을 때(ffmpeg 실패 등) 여기까지 내려온다 — 정지 썸네일로 받친다
+                    poster={posterUrl(e.media, video)}
                     controls
                     playsInline
                     autoPlay={playing.has(e.id)}

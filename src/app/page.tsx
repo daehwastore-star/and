@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { getMembers } from '@/lib/members'
 import { fmtDateTime, fmtDate, kstDday } from '@/lib/format'
-import { isVideoFile } from '@/lib/media'
+import { isVideoFile, posterUrl } from '@/lib/media'
 import MyIdentity from '@/components/MyIdentity'
 import PushSetup from '@/components/PushSetup'
 
@@ -63,7 +63,7 @@ export default async function Home() {
     take: 3,
     include: {
       rehearsal: true,
-      media: { select: { id: true } },
+      media: { select: { id: true, file: true, thumb: true } },
       _count: { select: { likes: true, comments: true } },
     },
   })
@@ -320,8 +320,11 @@ export default async function Home() {
                     {isVideoFile(e.photo) ? (
                       <video
                         src={`/api/photos/${e.photo}`}
+                        // 썸네일이 없으면 모바일에서 검은 네모만 보인다
+                        poster={posterUrl(e.media, e.photo)}
                         controls
                         playsInline
+                        preload="metadata"
                         className="max-h-80 w-full bg-black"
                       />
                     ) : (
