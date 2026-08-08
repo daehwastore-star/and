@@ -4,6 +4,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join, extname } from 'path'
 import { randomUUID } from 'crypto'
 import { makeGifPreview, makeVideoThumb } from '@/lib/videoPreview'
+import { shrinkImage, MAX_IMAGE_BYTES } from '@/lib/image'
 
 const ALLOWED_EXT = [
   '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', // 사진
@@ -53,13 +54,20 @@ export async function POST(req: NextRequest) {
   // ── 저장하기 전에 전부 검사한다 ──
   // 예전엔 한 장씩 "검사 → 저장" 을 반복했다. 그러면 세 번째 파일이 퇴짜를 맞을 때
   // 앞의 두 장은 이미 디스크에 쓰인 뒤라, 글은 안 만들어졌는데 파일만 주인 없이 남았다
-  // (2026-08-08 uploads 에 고아 파일 6개 11MB 발견). 하나라도 걸리면 아무것도 쓰지 않는다.
+  // (2026-08-08 uploads 에 주인 없는 파일 6개 11MB 발견).
+  // 하나라도 걸리면 아무것도 쓰지 않는다.
   const incoming = files.map(f => ({ file: f, ext: extname(f.name).toLowerCase() || '.jpg' }))
   for (const { file, ext } of incoming) {
-    if (file.size > 200 * 1024 * 1024)
-      return NextResponse.json({ error: '200MB 이하 파일만 올릴 수 있어요' }, { status: 400 })
     if (!ALLOWED_EXT.includes(ext))
       return NextResponse.json({ error: '사진이나 영상 파일만 올릴 수 있어요' }, { status: 400 })
+    // 사진은 크다고 돌려보내지 않는다 — 저장한 뒤 알맞게 줄인다(shrinkImage).
+    // 영상은 다시 인코딩하는 게 너무 무거워 줄일 수 없으니 상한을 그대로 둔다.
+    const limit = VIDEO_EXTS.includes(ext) ? 200 * 1024 * 1024 : MAX_IMAGE_BYTES
+    if (file.size > limit)
+      return NextResponse.json(
+        { error: VIDEO_EXTS.includes(ext) ? '영상은 200MB 이하로 올려주세요' : '사진이 너무 커요 (50MB 이하)' },
+        { status: 400 },
+      )
   }
   if (!text && incoming.length === 0)
     return NextResponse.json({ error: '사진이나 내용을 하나는 넣어주세요' }, { status: 400 })
@@ -76,6 +84,8 @@ export async function POST(req: NextRequest) {
     const isVideo = VIDEO_EXTS.includes(ext)
     const thumb = isVideo ? await makeVideoThumb(name) : null
     const preview = isVideo ? await makeGifPreview(name) : null
+    // 사진이 너무 크면 그 자리에서 줄인다 (실패하면 원본 그대로)
+    if (!isVideo) await shrinkImage(name, ext)
     saved.push({ file: name, preview, thumb })
   }
 
