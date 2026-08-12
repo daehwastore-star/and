@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { fmtDateTime, fmtDate } from '@/lib/format'
 import { isVideoFile } from '@/lib/media'
 import { getMyId } from '@/lib/identity'
+import { saveMediaToDevice } from '@/lib/download'
 
 interface Comment {
   id: string
@@ -386,6 +387,7 @@ function FeedCard({
   const [mediaIdx, setMediaIdx] = useState(0)
   const [showAllComments, setShowAllComments] = useState(false)
   const [draft, setDraft] = useState('')
+  const [savingMedia, setSavingMedia] = useState(false)
 
   const author = members.find(m => m.name === e.author)
   const myId = getMyId()
@@ -489,15 +491,24 @@ function FeedCard({
         </button>
         <span className="text-2xl leading-none">💬</span>
         {medias.length > 0 && (
-          // 지금 보고 있는 사진/영상 저장
-          <a
-            href={`/api/photos/${medias[Math.min(mediaIdx, medias.length - 1)].file}?download=1`}
-            download
-            className="text-xl leading-none"
-            aria-label="다운로드"
+          // 지금 보고 있는 사진/영상을 사진첩으로 (공유 시트)
+          <button
+            type="button"
+            disabled={savingMedia}
+            onClick={async () => {
+              const cur = medias[Math.min(mediaIdx, medias.length - 1)]
+              setSavingMedia(true)
+              try {
+                await saveMediaToDevice(`/api/photos/${cur.file}`, cur.file)
+              } finally {
+                setSavingMedia(false)
+              }
+            }}
+            className="text-xl leading-none disabled:opacity-40"
+            aria-label="사진첩에 저장"
           >
-            ⬇️
-          </a>
+            {savingMedia ? '⏳' : '⬇️'}
+          </button>
         )}
         {e.likes.length > 0 && (
           <span className="ml-auto text-sm font-semibold">
