@@ -488,6 +488,17 @@ function FeedCard({
           {liked ? '❤️' : '🤍'}
         </button>
         <span className="text-2xl leading-none">💬</span>
+        {medias.length > 0 && (
+          // 지금 보고 있는 사진/영상 저장
+          <a
+            href={`/api/photos/${medias[Math.min(mediaIdx, medias.length - 1)].file}?download=1`}
+            download
+            className="text-xl leading-none"
+            aria-label="다운로드"
+          >
+            ⬇️
+          </a>
+        )}
         {e.likes.length > 0 && (
           <span className="ml-auto text-sm font-semibold">
             좋아요 {e.likes.length}개

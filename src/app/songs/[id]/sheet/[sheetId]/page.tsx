@@ -78,6 +78,15 @@ export default function SheetViewerPage({
         ‹
       </button>
 
+      {/* 플로팅 다운로드 (원본 파일명으로 저장) */}
+      <a
+        href={`${fileUrl}?download=1&dl=${encodeURIComponent(sheet.filename)}`}
+        download
+        aria-label="악보 다운로드"
+        className="fixed right-4 top-16 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-lg text-white backdrop-blur active:bg-black/80"
+      >
+        ⬇
+      </a>
     </div>
   )
 }

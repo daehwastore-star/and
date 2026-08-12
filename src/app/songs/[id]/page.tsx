@@ -188,6 +188,14 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
                     {s.uploader && ` · ${s.uploader}`} · {fmtDate(s.createdAt)}
                   </span>
                 </Link>
+                <a
+                  href={`/api/photos/${s.file}?download=1&dl=${encodeURIComponent(s.filename)}`}
+                  download
+                  aria-label="악보 다운로드"
+                  className="shrink-0 px-1.5 text-sm text-brand"
+                >
+                  ⬇
+                </a>
                 <button
                   type="button"
                   onClick={() => removeSheet(s)}

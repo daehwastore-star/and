@@ -31,12 +31,19 @@ function fileResponse(
   size: number,
   type: string,
   range: { start: number; end: number } | null,
+  downloadName?: string | null,
 ) {
   const headers: Record<string, string> = {
     'Content-Type': type,
     'Cache-Control': 'public, max-age=86400',
     // 이 주소는 구간 요청을 받는다고 알린다. 이게 없으면 브라우저는 시도조차 안 한다.
     'Accept-Ranges': 'bytes',
+  }
+  // ?download=1 이면 브라우저가 열지 않고 저장하도록 한다.
+  // 한글 파일명은 RFC 5987 형식(filename*)으로 넣어야 안 깨진다.
+  if (downloadName) {
+    headers['Content-Disposition'] =
+      `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`
   }
   const stream = createReadStream(path, range ? { start: range.start, end: range.end } : undefined)
   const body = Readable.toWeb(stream) as unknown as ReadableStream
@@ -102,5 +109,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ name
     })
   }
 
-  return fileResponse(path, size, type, range)
+  // ?download=1 → 저장용 응답. dl 파라미터로 사람이 알아볼 파일명 지정 가능.
+  const wantDownload = req.nextUrl.searchParams.get('download') === '1'
+  const downloadName = wantDownload
+    ? basename(req.nextUrl.searchParams.get('dl') || safe)
+    : null
+
+  return fileResponse(path, size, type, range, downloadName)
 }
