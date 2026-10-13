@@ -1,6 +1,7 @@
 // 업로드 미디어 파일 구분
 export const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']
 export const VIDEO_EXT = ['.mp4', '.mov', '.webm', '.m4v']
+export const AUDIO_EXT = ['.mp3', '.m4a', '.wav', '.aac']
 
 export function isVideoFile(name: string): boolean {
   const lower = name.toLowerCase()

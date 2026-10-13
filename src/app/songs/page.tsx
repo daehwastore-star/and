@@ -13,6 +13,7 @@ interface Song {
   inRepertoire: boolean
   rehearsals: { rehearsalId: string }[]
   sheets: { id: string; part: string }[]
+  tracks: { id: string }[]
 }
 
 interface SearchResult {
@@ -225,10 +226,11 @@ export default function SongsPage() {
                     </span>
                   </span>
                   <span className="shrink-0 text-sm">
+                    {s.tracks.length > 0 && <span title="연습 음원 있음">🎧</span>}
                     {parts.length > 0 ? (
                       parts.map(p => <span key={p}>{partEmoji(p)}</span>)
                     ) : (
-                      <span className="text-xs text-zinc-400">악보 없음</span>
+                      s.tracks.length === 0 && <span className="text-xs text-zinc-400">악보 없음</span>
                     )}
                   </span>
                   <span className="shrink-0 text-zinc-400">›</span>

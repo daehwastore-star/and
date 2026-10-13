@@ -132,6 +132,20 @@ model Song {
   rehearsals RehearsalSong[]
   sheets     SheetMusic[]
   wishes     SongWish[]
+  tracks     PracticeTrack[]
+}
+
+// 곡별 연습 음원 (드럼 반주 MP3 등 — 드럼 없이 맞춰 연습할 때)
+model PracticeTrack {
+  id        String   @id @default(cuid())
+  songId    String
+  label     String // 예: "드럼 · 원곡 템포 155"
+  file      String // uploads/ 폴더 파일명
+  filename  String // 업로드한 원본 파일명
+  uploader  String? // 올린 사람 이름
+  createdAt DateTime @default(now())
+
+  song Song @relation(fields: [songId], references: [id], onDelete: Cascade)
 }
 
 // 곡별 악보 파일 (파트별 업로드)

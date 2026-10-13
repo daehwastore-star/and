@@ -7,6 +7,7 @@ export async function GET() {
     include: {
       rehearsals: { select: { rehearsalId: true } },
       sheets: { select: { id: true, part: true } },
+      tracks: { select: { id: true } },
     },
   })
   return NextResponse.json({ songs })

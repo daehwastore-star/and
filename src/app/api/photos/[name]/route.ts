@@ -16,6 +16,10 @@ const MIME: Record<string, string> = {
   '.mov': 'video/quicktime',
   '.webm': 'video/webm',
   '.m4v': 'video/mp4',
+  '.mp3': 'audio/mpeg', // 연습 음원
+  '.m4a': 'audio/mp4',
+  '.wav': 'audio/wav',
+  '.aac': 'audio/aac',
 }
 
 // 영상은 브라우저가 파일을 통째로 받지 않는다. "앞에서 몇 바이트만 주세요" 하고

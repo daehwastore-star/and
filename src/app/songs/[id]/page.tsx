@@ -16,6 +16,14 @@ interface Sheet {
   uploader: string | null
   createdAt: string
 }
+interface Track {
+  id: string
+  label: string
+  file: string
+  filename: string
+  uploader: string | null
+  createdAt: string
+}
 interface Song {
   id: string
   title: string
@@ -23,6 +31,7 @@ interface Song {
   artwork: string | null
   inRepertoire: boolean
   sheets: Sheet[]
+  tracks: Track[]
 }
 interface Member {
   id: string
@@ -39,6 +48,10 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [trackFile, setTrackFile] = useState<File | null>(null)
+  const [trackLabel, setTrackLabel] = useState('')
+  const [trackSaving, setTrackSaving] = useState(false)
+  const [trackError, setTrackError] = useState('')
 
   const load = useCallback(async () => {
     const [s, m] = await Promise.all([
@@ -89,6 +102,34 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  const uploadTrack = async () => {
+    setTrackError('')
+    if (!trackFile) return setTrackError('음원 파일(MP3 등)을 첨부해주세요')
+    setTrackSaving(true)
+    try {
+      const form = new FormData()
+      form.append('file', trackFile)
+      form.append('label', trackLabel)
+      form.append('uploader', uploader)
+      const res = await fetch(`/api/songs/${id}/tracks`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '업로드 실패')
+      setTrackFile(null)
+      setTrackLabel('')
+      await load()
+    } catch (e) {
+      setTrackError(e instanceof Error ? e.message : '업로드 실패')
+    } finally {
+      setTrackSaving(false)
+    }
+  }
+
+  const removeTrack = async (t: Track) => {
+    if (!confirm(`"${t.label}" 음원을 삭제할까요?`)) return
+    await fetch(`/api/tracks/${t.id}`, { method: 'DELETE' })
+    await load()
+  }
+
   const removeSheet = async (s: Sheet) => {
     if (!confirm(`${s.part} 악보(${s.filename})를 삭제할까요?`)) return
     await fetch(`/api/sheets/${s.id}`, { method: 'DELETE' })
@@ -97,7 +138,7 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
 
   const removeSong = async () => {
     if (!song) return
-    if (!confirm(`"${song.title}" 곡을 삭제할까요? 악보도 함께 삭제돼요.`)) return
+    if (!confirm(`"${song.title}" 곡을 삭제할까요? 악보와 연습 음원도 함께 삭제돼요.`)) return
     await fetch(`/api/songs/${id}`, { method: 'DELETE' })
     router.push('/songs')
     router.refresh()
@@ -162,6 +203,77 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
       <p className="mt-1 text-xs text-zinc-500">
         위시 전용으로 바꾸면 연습곡 목록에서 빠지고 위시리스트에만 남아요
       </p>
+
+      {/* 연습 음원 */}
+      <section className="mt-6">
+        <h2 className="text-base font-semibold">🎧 연습 음원</h2>
+        {song.tracks.length === 0 ? (
+          <p className="mt-2 rounded-2xl bg-surface p-5 text-center text-sm text-zinc-500">
+            아직 올라온 음원이 없어요.
+          </p>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {song.tracks.map(t => (
+              <div key={t.id} className="rounded-2xl bg-surface p-3">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="block break-words text-sm font-semibold [overflow-wrap:anywhere]">{t.label}</span>
+                    <span className="block truncate text-xs text-zinc-500">
+                      {t.filename}
+                      {t.uploader && ` · ${t.uploader}`} · {fmtDate(t.createdAt)}
+                    </span>
+                  </div>
+                  <a
+                    href={`/api/photos/${t.file}?download=1&dl=${encodeURIComponent(t.filename)}`}
+                    download
+                    aria-label="음원 다운로드"
+                    className="shrink-0 px-1.5 text-sm text-brand"
+                  >
+                    ⬇
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => removeTrack(t)}
+                    className="shrink-0 px-2 text-sm text-zinc-400"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {/* preload=none: 목록을 열 때마다 몇 MB씩 받지 않도록, 누를 때만 받는다 */}
+                <audio controls preload="none" src={`/api/photos/${t.file}`} className="mt-2 w-full" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-2 space-y-2 rounded-2xl bg-surface p-3">
+          <input
+            type="text"
+            value={trackLabel}
+            onChange={e => setTrackLabel(e.target.value)}
+            placeholder="음원 이름 (예: 드럼 · 원곡 템포)"
+            className="w-full rounded-xl bg-surface-2 px-4 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand"
+          />
+          <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-zinc-700">
+            🎵 <span className="min-w-0 truncate">{trackFile ? trackFile.name : 'MP3·M4A·WAV 첨부'}</span>
+            <input
+              type="file"
+              accept="audio/*,.mp3,.m4a,.wav,.aac"
+              className="hidden"
+              onChange={e => setTrackFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {trackError && <p className="text-sm text-red-500">{trackError}</p>}
+          <button
+            type="button"
+            onClick={uploadTrack}
+            disabled={trackSaving}
+            className="w-full rounded-xl bg-brand py-2.5 text-sm font-bold text-white disabled:opacity-50"
+          >
+            {trackSaving ? '올리는 중…' : '음원 올리기'}
+          </button>
+        </div>
+      </section>
 
       {/* 악보 목록 */}
       <section className="mt-6">
