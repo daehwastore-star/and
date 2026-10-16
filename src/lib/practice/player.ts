@@ -60,7 +60,7 @@ export class StemPlayer {
     this.bars = cfg.bars
     this.stems = new Map(stems.map(s => [s.part, s]))
     this.master = audio.ctx.createGain()
-    this.master.connect(audio.ctx.destination)
+    this.master.connect(audio.out) // 녹음 때 '무엇을 틀었나'도 같이 모이도록 앱 공용 출력으로
     this.bar1 = this.countInBeats * this.spb
   }
 

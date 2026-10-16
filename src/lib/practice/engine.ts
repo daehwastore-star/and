@@ -3,25 +3,28 @@
 // 브라우저 오디오: 마이크 녹음(AudioWorklet) + 반주 재생을 한 AudioContext 시계로 맞춘다.
 // 녹음 샘플마다 AudioContext 시각을 알 수 있어서, "몇 시에 클릭을 틀었는데 몇 시에 쳤다"를 샘플 단위로 비교할 수 있다.
 
+// 입력 0 = 마이크, 입력 1 = 같은 순간 스피커로 나간 소리(앱이 튼 것). 둘을 같은 프레임 번호로 같이 모은다
 const WORKLET = `
 class PracticeRecorder extends AudioWorkletProcessor {
   constructor() {
     super()
     this.on = true
     this.buf = new Float32Array(4096)
+    this.rbuf = new Float32Array(4096)
     this.n = 0
     this.start = -1
     this.port.onmessage = e => { if (e.data === 'stop') { this.flush(); this.on = false } }
   }
   flush() {
     if (this.n > 0) {
-      this.port.postMessage({ frame: this.start, data: this.buf.slice(0, this.n) })
+      this.port.postMessage({ frame: this.start, data: this.buf.slice(0, this.n), ref: this.rbuf.slice(0, this.n) })
       this.n = 0
       this.start = -1
     }
   }
   process(inputs) {
     const ch = inputs[0] && inputs[0][0]
+    const rc = inputs[1] && inputs[1][0]
     if (ch && ch.length) {
       if (this.start < 0) this.start = currentFrame
       // 이어지지 않거나(끊김) 버퍼가 차면 지금까지 것을 보내고 새로 시작
@@ -30,6 +33,8 @@ class PracticeRecorder extends AudioWorkletProcessor {
         this.start = currentFrame
       }
       this.buf.set(ch, this.n)
+      if (rc && rc.length === ch.length) this.rbuf.set(rc, this.n)
+      else this.rbuf.fill(0, this.n, this.n + ch.length)
       this.n += ch.length
     }
     return this.on
@@ -42,6 +47,16 @@ export interface Recording {
   samples: Float32Array
   sampleRate: number
   startTime: number // samples[0] 의 AudioContext 시각 (초)
+  /** 같은 순간 스피커(이어폰)로 나간 소리 — samples 와 같은 길이·같은 시각. 반주가 마이크로 샌 걸 빼는 데 쓴다 */
+  reference?: Float32Array
+}
+
+export interface MicInfo {
+  deviceId: string
+  label: string
+  sampleRate: number | null
+  /** 블루투스 이어폰 마이크로 보임 (통화 음질 — 드럼 소리가 깎이고 반주 음질도 떨어진다) */
+  bluetooth: boolean
 }
 
 interface NavigatorWithAudioSession extends Navigator {
@@ -54,12 +69,16 @@ export class PracticeAudio {
   private source: MediaStreamAudioSourceNode | null = null
   private analyser: AnalyserNode | null = null
   private node: AudioWorkletNode | null = null
-  private chunks: { frame: number; data: Float32Array }[] = []
+  private chunks: { frame: number; data: Float32Array; ref?: Float32Array }[] = []
+  /** 앱이 내는 모든 소리는 여기를 거쳐 스피커로 간다 — 녹음할 때 '무엇을 틀었나'를 같이 모으려고 */
+  readonly out: GainNode
   private playing: AudioBufferSourceNode[] = []
   private closed = false
 
   private constructor(ctx: AudioContext) {
     this.ctx = ctx
+    this.out = ctx.createGain()
+    this.out.connect(ctx.destination)
   }
 
   /** 아이폰 오디오 세션: 듣기만 할 땐 'playback'(무음 스위치·볼륨이 음악처럼), 녹음할 땐 'play-and-record' */
@@ -96,17 +115,23 @@ export class PracticeAudio {
   private micOpening: Promise<void> | null = null
 
   /** 마이크 열기 — 에코 제거·잡음 제거·자동 음량은 끈다 (타격 순간이 뭉개지지 않게). 두 번 눌러도 한 번만 연다 */
-  openMic(): Promise<void> {
+  openMic(deviceId?: string | null): Promise<void> {
     if (this.stream) return Promise.resolve()
-    if (!this.micOpening) this.micOpening = this.doOpenMic().finally(() => (this.micOpening = null))
+    if (!this.micOpening) this.micOpening = this.doOpenMic(deviceId ?? null).finally(() => (this.micOpening = null))
     return this.micOpening
   }
 
-  private async doOpenMic() {
+  private async doOpenMic(deviceId: string | null) {
     await this.loadWorklet()
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
-    })
+    const base = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { ...base, deviceId: { exact: deviceId } } : base })
+    } catch (e) {
+      // 고른 마이크가 없어졌으면(이어폰 뺌 등) 기본 마이크로
+      if (!deviceId || (e as { name?: string })?.name !== 'OverconstrainedError') throw e
+      stream = await navigator.mediaDevices.getUserMedia({ audio: base })
+    }
     if (this.closed) {
       stream.getTracks().forEach(t => t.stop())
       throw new Error('closed')
@@ -149,6 +174,31 @@ export class PracticeAudio {
     return !!this.stream
   }
 
+  /** 지금 쓰는 마이크 */
+  micInfo(): MicInfo | null {
+    const t = this.stream?.getAudioTracks()[0]
+    if (!t) return null
+    const st = t.getSettings()
+    const label = t.label || ''
+    const sampleRate = st.sampleRate ?? null
+    return {
+      deviceId: st.deviceId ?? '',
+      label,
+      sampleRate,
+      bluetooth: /airpods|bluetooth|buds|headset|hands-free|핸즈프리|헤드셋|블루투스/i.test(label) || (sampleRate !== null && sampleRate <= 24000),
+    }
+  }
+
+  /** 고를 수 있는 마이크들 (권한을 한 번 받은 뒤라야 이름이 나온다) */
+  static async listMics(): Promise<{ deviceId: string; label: string }[]> {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices()
+      return all.filter(d => d.kind === 'audioinput' && d.deviceId).map(d => ({ deviceId: d.deviceId, label: d.label || '마이크' }))
+    } catch {
+      return []
+    }
+  }
+
   /** 지금 마이크 소리 크기 (0~1) */
   level(): number {
     if (!this.analyser) return 0
@@ -162,9 +212,10 @@ export class PracticeAudio {
   startRecording() {
     if (!this.source) throw new Error('마이크가 열리지 않았어요')
     this.chunks = []
-    const node = new AudioWorkletNode(this.ctx, 'practice-recorder', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' })
+    const node = new AudioWorkletNode(this.ctx, 'practice-recorder', { numberOfInputs: 2, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' })
     node.port.onmessage = e => this.chunks.push(e.data)
-    this.source.connect(node)
+    this.source.connect(node, 0, 0)
+    this.out.connect(node, 0, 1)
     // 출력에 연결해야 처리가 돈다 (소리는 0)
     const mute = this.ctx.createGain()
     mute.gain.value = 0
@@ -176,7 +227,7 @@ export class PracticeAudio {
   recentSamples(seconds: number): Recording | null {
     const sr = this.ctx.sampleRate
     const want = Math.round(seconds * sr)
-    const parts: { frame: number; data: Float32Array }[] = []
+    const parts: { frame: number; data: Float32Array; ref?: Float32Array }[] = []
     let n = 0
     for (let i = this.chunks.length - 1; i >= 0 && n < want; i--) {
       parts.unshift(this.chunks[i])
@@ -187,8 +238,12 @@ export class PracticeAudio {
     const last = parts[parts.length - 1]
     const total = last.frame + last.data.length - first
     const samples = new Float32Array(total)
-    for (const c of parts) samples.set(c.data, c.frame - first)
-    return { samples, sampleRate: sr, startTime: first / sr }
+    const reference = new Float32Array(total)
+    for (const c of parts) {
+      samples.set(c.data, c.frame - first)
+      if (c.ref) reference.set(c.ref, c.frame - first)
+    }
+    return { samples, sampleRate: sr, startTime: first / sr, reference }
   }
 
   async stopRecording(): Promise<Recording> {
@@ -200,6 +255,9 @@ export class PracticeAudio {
     try {
       this.source?.disconnect(node)
     } catch {}
+    try {
+      this.out.disconnect(node)
+    } catch {}
     node.disconnect()
     this.node = null
     const chunks = this.chunks
@@ -210,8 +268,12 @@ export class PracticeAudio {
     const last = chunks[chunks.length - 1]
     const total = last.frame + last.data.length - first
     const samples = new Float32Array(total)
-    for (const c of chunks) samples.set(c.data, c.frame - first) // 끊긴 자리는 0 으로 남는다
-    return { samples, sampleRate: this.ctx.sampleRate, startTime: first / this.ctx.sampleRate }
+    const reference = new Float32Array(total)
+    for (const c of chunks) {
+      samples.set(c.data, c.frame - first) // 끊긴 자리는 0 으로 남는다
+      if (c.ref) reference.set(c.ref, c.frame - first)
+    }
+    return { samples, sampleRate: this.ctx.sampleRate, startTime: first / this.ctx.sampleRate, reference }
   }
 
   makeBuffer(channels: Float32Array[]): AudioBuffer {
@@ -226,7 +288,7 @@ export class PracticeAudio {
     src.buffer = buf
     const g = this.ctx.createGain()
     g.gain.value = gain
-    src.connect(g).connect(this.ctx.destination)
+    src.connect(g).connect(this.out)
     src.start(Math.max(when, this.ctx.currentTime), Math.max(0, offset), duration)
     this.playing.push(src)
     src.onended = () => {

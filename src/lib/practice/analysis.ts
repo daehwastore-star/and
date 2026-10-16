@@ -70,6 +70,60 @@ export interface DetectOptions {
   to?: number
   /** 진행률 콜백 (0~1). 넘기면 중간중간 쉬어가며 UI 가 멈추지 않게 한다 */
   onProgress?: (p: number) => void
+  /**
+   * 같은 순간 스피커(이어폰)로 나간 소리 — 앱이 튼 반주·클릭을 x 와 같은 샘플 위치(같은 시각)로 받아 둔 것.
+   * 주면 마이크로 새어 들어온 반주를 스펙트럼에서 빼고 찾는다. (폰 스피커로 틀고 치면 기타 스트로크·클릭이
+   * 마이크에 들어와 '친 소리'로 잡히는데, 무엇을 틀었는지는 우리가 정확히 아니까 그만큼 빼면 된다)
+   */
+  reference?: Float32Array
+  /** 스피커 → 마이크 지연(초, 지연 측정값). 모르면 비워 두면 소리끼리 맞춰 보고 찾는다 */
+  referenceLag?: number | null
+  /** 반주가 얼마나 새어 들어왔는지 알려 준다 */
+  onBleed?: (b: BleedInfo) => void
+}
+
+export interface BleedInfo {
+  lag: number // 반주가 마이크에 들어온 지연 (초)
+  level: number // 마이크 소리가 반주와 얼마나 닮았나 (0 ~ 1, 0.3 넘으면 스피커 소리가 꽤 들어온 것)
+  removed: number // 반주 소리라서 버린 후보 수
+}
+
+// 소리 크기 변화(시작 순간들)끼리 맞춰 보며 reference 가 x 에 몇 초 늦게 들어왔는지 찾는다
+function referenceLag(x: Float32Array, r: Float32Array, from: number, to: number, sr: number, hop: number, guess: number | null) {
+  const n = Math.floor((to - from) / hop)
+  const env = (sig: Float32Array) => {
+    const d = new Float64Array(n)
+    let prev = 0
+    for (let i = 0; i < n; i++) {
+      let e = 0
+      const s = from + i * hop
+      for (let k = 0; k < hop && s + k < sig.length; k++) e += sig[s + k] * sig[s + k]
+      const l = Math.log(1e-10 + e)
+      d[i] = i > 0 ? Math.max(0, l - prev) : 0
+      prev = l
+    }
+    let m = 0
+    for (const v of d) m += v
+    m /= n || 1
+    let v2 = 0
+    for (let i = 0; i < n; i++) { d[i] -= m; v2 += d[i] * d[i] }
+    const sd = Math.sqrt(v2 / (n || 1)) || 1
+    for (let i = 0; i < n; i++) d[i] /= sd
+    return d
+  }
+  const ex = env(x)
+  const er = env(r)
+  const lo = guess === null ? 0 : Math.max(0, Math.round((guess - 0.02) * sr / hop))
+  const hi = guess === null ? Math.round(0.5 * sr / hop) : Math.round((guess + 0.02) * sr / hop)
+  let best = guess === null ? 0 : Math.round(guess * sr / hop)
+  let bestC = -Infinity
+  for (let L = lo; L <= hi; L++) {
+    let c = 0
+    for (let i = 0; i + L < n; i++) c += ex[i + L] * er[i]
+    c /= Math.max(1, n - L)
+    if (c > bestC) { bestC = c; best = L }
+  }
+  return { lag: guess ?? (best * hop) / sr, corr: Math.max(0, bestC) }
 }
 
 const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0))
@@ -124,9 +178,85 @@ export async function detectOnsets(x: Float32Array, sr: number, opts: DetectOpti
   // SuperFlux: 2프레임 전 스펙트럼을 주파수 방향 최대값 필터한 것과 비교 — 심벌 잔향의 출렁임은 걸러진다
   const LAG = 2
   const hist = [new Float64Array(half), new Float64Array(half), new Float64Array(half)]
-
   const frames = Math.floor((to - from - N) / hop) + 1
+
+  // ── 스피커로 새어 들어온 반주 빼기 준비 ──
+  const R = opts.reference
+  let bleed: { lagS: number; gain: Float64Array; level: number } | null = null
+  const spec = (sig: Float32Array, s: number, out: Float64Array) => {
+    if (s < 0 || s + N > sig.length) {
+      out.fill(0)
+      return
+    }
+    for (let i = 0; i < N; i++) {
+      re[i] = sig[s + i] * win[i]
+      im[i] = 0
+    }
+    fft(re, im)
+    for (let b = 1; b < half; b++) out[b] = Math.sqrt(re[b] * re[b] + im[b] * im[b])
+  }
+  // 주파수를 로그 간격 묶음으로 (묶음마다 '반주 1 이 마이크에 얼마로 들어오나'를 따로 잰다)
+  const GROUPS = 24
+  const groupOf = new Uint8Array(half)
+  for (let b = 0; b < half; b++) {
+    const hz = Math.max(30, (b * sr) / N)
+    groupOf[b] = Math.min(GROUPS - 1, Math.floor((Math.log(hz / 30) / Math.log(16000 / 30)) * GROUPS))
+  }
+  if (R) {
+    const lg = referenceLag(x, R, from, to, sr, hop, opts.referenceLag ?? null)
+    const lagS = Math.round(lg.lag * sr)
+    // 묶음별 (마이크 / 반주) 비율 — 반주가 뚜렷한 프레임들에서 아래쪽 분위값: 내가 친 소리가 섞인 프레임은 비율이 커서 영향이 적다
+    const ratios: number[][] = Array.from({ length: GROUPS }, () => [])
+    const rLevels: number[][] = Array.from({ length: GROUPS }, () => [])
+    const mx = new Float64Array(half)
+    const mr = new Float64Array(half)
+    const step = Math.max(1, Math.floor(frames / 1500)) // 1500 프레임 정도면 충분
+    for (let f = 0; f < frames; f += step) {
+      const s = from + f * hop
+      spec(R, s - lagS, mr)
+      spec(x, s, mx)
+      const gx = new Float64Array(GROUPS)
+      const gr = new Float64Array(GROUPS)
+      for (let b = 1; b < half; b++) {
+        gx[groupOf[b]] += mx[b]
+        gr[groupOf[b]] += mr[b]
+      }
+      for (let g = 0; g < GROUPS; g++) {
+        if (gr[g] <= 1e-6) continue
+        rLevels[g].push(gr[g])
+        ratios[g].push(gx[g] / gr[g])
+      }
+    }
+    const gain = new Float64Array(GROUPS)
+    for (let g = 0; g < GROUPS; g++) {
+      const lv = [...rLevels[g]].sort((a, b) => a - b)
+      if (lv.length < 20) continue
+      const thr = lv[Math.floor(lv.length * 0.5)] // 반주가 중간 이상 클 때만
+      const rs = ratios[g].filter((_, i) => rLevels[g][i] >= thr).sort((a, b) => a - b)
+      // 아래쪽 10% 값 ×1.25: 반주만 들어온 프레임에선 비율이 거의 일정하고(±30%), 내가 친 프레임은 비율이 위로 튄다
+      gain[g] = rs.length ? rs[Math.floor(rs.length * 0.1)] * 1.25 : 0
+    }
+    // 반주와 닮은 정도가 낮으면(이어폰) 빼지 않는다 — 괜히 빼면 내 소리만 깎인다
+    if (lg.corr >= 0.12) bleed = { lagS, gain, level: lg.corr }
+    else opts.onBleed?.({ lag: lg.lag, level: lg.corr, removed: 0 })
+    if (opts.onProgress) await yieldToUI()
+  }
+  const SPREAD = 2
+  const ALPHA = 3 // 넉넉히 뺀다 (방 울림·스피커 찌그러짐 몫)
+  const TAIL = Math.exp(-hop / sr / 0.25) // 방 울림으로 반주 소리가 0.25초 정도 끌린다고 보고
+  const rRing = [new Float64Array(half), new Float64Array(half), new Float64Array(half)]
+  const rTail = new Float64Array(half)
+  const magRing = [new Float64Array(half), new Float64Array(half), new Float64Array(half)]
+  const curS = new Float64Array(half)
+  const refS = new Float64Array(half)
+  const mask = new Float64Array(half)
+  if (bleed && R) {
+    spec(R, from - bleed.lagS, rRing[0])
+    if (frames > 1) spec(R, from + hop - bleed.lagS, rRing[1])
+  }
+
   const bandFlux = BANDS.map(() => new Float64Array(frames))
+  const bandFluxS = bleed ? BANDS.map(() => new Float64Array(frames)) : bandFlux
   const rms = new Float64Array(frames)
   for (let f = 0; f < frames; f++) {
     const s = from + f * hop
@@ -141,17 +271,44 @@ export async function detectOnsets(x: Float32Array, sr: number, opts: DetectOpti
     fft(re, im)
     const cur = hist[f % 3]
     const ref = hist[(f + 3 - LAG) % 3]
-    for (let b = 1; b < half; b++) cur[b] = Math.log1p(1000 * Math.sqrt(re[b] * re[b] + im[b] * im[b]))
+    const mag = magRing[f % 3]
+    for (let b = 1; b < half; b++) {
+      mag[b] = Math.sqrt(re[b] * re[b] + im[b] * im[b])
+      cur[b] = Math.log1p(1000 * mag[b])
+    }
+    if (bleed && R) {
+      // 지금 반주 크기(앞뒤 한 프레임까지 — 살짝 어긋나도 빠지게) + 울림 꼬리 = 이번 프레임에서 뺄 몫
+      spec(R, s + hop - bleed.lagS, rRing[(f + 1) % 3])
+      const a = rRing[(f + 2) % 3], c = rRing[f % 3], d = rRing[(f + 1) % 3]
+      for (let b = 1; b < half; b++) rTail[b] = Math.max(a[b], c[b], d[b], rTail[b] * TAIL)
+      // 주파수로도 ±2칸 최대값 — 방 울림·스피커 색깔로 반주 소리가 옆 칸으로 번진 몫까지
+      for (let b = 1; b < half; b++) {
+        let m = rTail[b]
+        for (let k = Math.max(1, b - SPREAD); k <= Math.min(half - 1, b + SPREAD); k++) if (rTail[k] > m) m = rTail[k]
+        mask[b] = ALPHA * bleed.gain[groupOf[b]] * m
+      }
+    }
     if (f >= LAG) {
-      BANDS.forEach(([b0, b1], k) => {
-        let flux = 0
-        for (let b = b0; b < b1; b++) {
-          const r = Math.max(ref[b - 1], ref[b], ref[b + 1] ?? 0)
-          const d = cur[b] - r
-          if (d > 0) flux += d
+      const flux = (c: Float64Array, r: Float64Array, out: Float64Array[]) =>
+        BANDS.forEach(([b0, b1], k) => {
+          let sum = 0
+          for (let b = b0; b < b1; b++) {
+            const d = c[b] - Math.max(r[b - 1], r[b], r[b + 1] ?? 0)
+            if (d > 0) sum += d
+          }
+          out[k][f] = sum
+        })
+      flux(cur, ref, bandFlux)
+      if (bleed) {
+        // 지금 프레임과 2프레임 전을 '같은(지금의) 몫'을 빼고 비교한다.
+        // 프레임마다 다른 몫을 빼면 반주가 작아지는 순간 가려졌던 소리가 '새로 생긴 것'처럼 보인다.
+        const prev = magRing[(f + 3 - LAG) % 3]
+        for (let b = 1; b < half; b++) {
+          curS[b] = Math.log1p(1000 * Math.max(0, mag[b] - mask[b]))
+          refS[b] = Math.log1p(1000 * Math.max(0, prev[b] - mask[b]))
         }
-        bandFlux[k][f] = flux
-      })
+        flux(curS, refS, bandFluxS)
+      }
     }
     if (opts.onProgress && f % 3000 === 0) {
       opts.onProgress((0.85 * f) / frames)
@@ -159,15 +316,18 @@ export async function detectOnsets(x: Float32Array, sr: number, opts: DetectOpti
     }
   }
 
-  // 대역마다 상위 1% 값을 1 로 맞춘 뒤 가장 큰 대역 값을 쓴다
+  // 대역마다 상위 1% 값을 1 로 맞춘 뒤 가장 큰 대역 값을 쓴다.
+  // 반주를 뺀 경우에도 '빼기 전' 크기로 맞춘다 — 아무것도 안 쳤을 때 남은 찌꺼기가 1 로 부풀려지지 않게.
   const odf = new Float64Array(frames)
   const which = new Uint8Array(frames)
+  const kept = new Float64Array(frames) // 빼고 남은 비율 (반주 소리면 거의 0)
   bandFlux.forEach((bf, k) => {
     const sorted = Float64Array.from(bf).sort()
     const p99 = sorted[Math.floor(sorted.length * 0.99)] || 1
+    const bs = bandFluxS[k]
     for (let f = 0; f < frames; f++) {
-      const v = bf[f] / p99
-      if (v > odf[f]) { odf[f] = v; which[f] = k }
+      const v = bs[f] / p99
+      if (v > odf[f]) { odf[f] = v; which[f] = k; kept[f] = bf[f] > 0 ? bs[f] / bf[f] : 0 }
     }
   })
   const rmsSorted = Float64Array.from(rms).sort()
@@ -225,7 +385,13 @@ export async function detectOnsets(x: Float32Array, sr: number, opts: DetectOpti
     return { n, M, B }
   }
   const raw: Onset[] = []
+  let removed = 0
   for (const f of peaks) {
+    // 반주를 빼니 대부분 사라지는 소리 = 스피커에서 새어 들어온 반주
+    if (bleed && kept[f] < 0.4) {
+      removed++
+      continue
+    }
     const s0 = from + f * hop
     const lo = Math.max(from, s0 - ms(60) - half)
     const hi = Math.min(to, s0 + N + N / 4)
@@ -255,6 +421,7 @@ export async function detectOnsets(x: Float32Array, sr: number, opts: DetectOpti
     }
     out.push(o)
   }
+  if (bleed) opts.onBleed?.({ lag: bleed.lagS / sr, level: bleed.level, removed })
   opts.onProgress?.(1)
   return out
 }
