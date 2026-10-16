@@ -19,3 +19,8 @@ body {
   color: var(--foreground);
   -webkit-tap-highlight-color: transparent;
 }
+
+/* 연습 녹음 중: 아래 탭바를 숨겨 악보를 넓게 (html[data-immersive] 는 연습 화면이 켜고 끈다) */
+html[data-immersive] [data-bottom-nav] {
+  display: none;
+}

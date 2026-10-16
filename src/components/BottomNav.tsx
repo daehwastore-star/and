@@ -17,7 +17,7 @@ export default function BottomNav() {
   // 악보 전체화면 뷰어에서는 탭바 숨김
   if (pathname.includes('/sheet/')) return null
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-200 bg-white/95 backdrop-blur">
+    <nav data-bottom-nav className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-lg">
         {TABS.map(tab => {
           const active =
