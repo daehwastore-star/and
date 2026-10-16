@@ -20,6 +20,8 @@ const MIME: Record<string, string> = {
   '.m4a': 'audio/mp4',
   '.wav': 'audio/wav',
   '.aac': 'audio/aac',
+  '.mid': 'audio/midi', // MIDI 는 받기 전용
+  '.midi': 'audio/midi',
 }
 
 // 영상은 브라우저가 파일을 통째로 받지 않는다. "앞에서 몇 바이트만 주세요" 하고

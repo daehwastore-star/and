@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { writeFile, mkdir, rm } from 'fs/promises'
 import { join, extname } from 'path'
 import { randomUUID } from 'crypto'
-import { AUDIO_EXT } from '@/lib/media'
+import { TRACK_EXT } from '@/lib/media'
 
 const MAX_BYTES = 50 * 1024 * 1024
 
@@ -21,8 +21,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // 저장하기 전에 다 검사한다 — 퇴짜 맞을 파일을 디스크에 먼저 쓰면 주인 없는 파일이 남는다
   const ext = extname(file.name).toLowerCase()
-  if (!AUDIO_EXT.includes(ext))
-    return NextResponse.json({ error: 'MP3·M4A·WAV 음원만 올릴 수 있어요' }, { status: 400 })
+  if (!TRACK_EXT.includes(ext))
+    return NextResponse.json({ error: 'MP3·M4A·WAV 음원이나 MIDI 파일만 올릴 수 있어요' }, { status: 400 })
   if (file.size > MAX_BYTES)
     return NextResponse.json({ error: '50MB 이하 음원만 올릴 수 있어요' }, { status: 400 })
 

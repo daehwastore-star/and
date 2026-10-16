@@ -2,6 +2,14 @@
 export const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']
 export const VIDEO_EXT = ['.mp4', '.mov', '.webm', '.m4v']
 export const AUDIO_EXT = ['.mp3', '.m4a', '.wav', '.aac']
+// 연습 음원 칸에는 MIDI 도 올릴 수 있다. 브라우저가 재생은 못 하니 받기만 한다.
+export const MIDI_EXT = ['.mid', '.midi']
+export const TRACK_EXT = [...AUDIO_EXT, ...MIDI_EXT]
+
+export function isMidiFile(name: string): boolean {
+  const lower = name.toLowerCase()
+  return MIDI_EXT.some(ext => lower.endsWith(ext))
+}
 
 export function isVideoFile(name: string): boolean {
   const lower = name.toLowerCase()

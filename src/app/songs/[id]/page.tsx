@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { SHEET_PARTS, partEmoji } from '@/lib/sheets'
 import { fmtDate } from '@/lib/format'
+import { isMidiFile } from '@/lib/media'
 import { getMyId } from '@/lib/identity'
 
 interface Sheet {
@@ -239,8 +240,19 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
                     ✕
                   </button>
                 </div>
-                {/* preload=none: 목록을 열 때마다 몇 MB씩 받지 않도록, 누를 때만 받는다 */}
-                <audio controls preload="none" src={`/api/photos/${t.file}`} className="mt-2 w-full" />
+                {isMidiFile(t.file) ? (
+                  // 브라우저는 MIDI 를 재생하지 못한다 — 받아서 개러지밴드 같은 앱으로 연다
+                  <a
+                    href={`/api/photos/${t.file}?download=1&dl=${encodeURIComponent(t.filename)}`}
+                    download
+                    className="mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-surface-2 py-2.5 text-sm font-semibold text-brand"
+                  >
+                    🎹 MIDI 파일 받기
+                  </a>
+                ) : (
+                  // preload=none: 목록을 열 때마다 몇 MB씩 받지 않도록, 누를 때만 받는다
+                  <audio controls preload="none" src={`/api/photos/${t.file}`} className="mt-2 w-full" />
+                )}
               </div>
             ))}
           </div>
@@ -255,10 +267,10 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
             className="w-full rounded-xl bg-surface-2 px-4 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand"
           />
           <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-surface-2 px-4 py-3 text-sm text-zinc-700">
-            🎵 <span className="min-w-0 truncate">{trackFile ? trackFile.name : 'MP3·M4A·WAV 첨부'}</span>
+            🎵 <span className="min-w-0 truncate">{trackFile ? trackFile.name : 'MP3·M4A·WAV·MIDI 첨부'}</span>
             <input
               type="file"
-              accept="audio/*,.mp3,.m4a,.wav,.aac"
+              accept="audio/*,.mp3,.m4a,.wav,.aac,.mid,.midi"
               className="hidden"
               onChange={e => setTrackFile(e.target.files?.[0] ?? null)}
             />
