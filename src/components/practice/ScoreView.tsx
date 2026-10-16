@@ -41,6 +41,7 @@ interface Props {
   onSelectBar?: (m: number) => void
   playhead?: () => number | null // 지금 박 (1마디 1박 = 0), 재생 중이 아니면 null
   follow?: boolean
+  range?: { from: number; to: number } | null // 반복 연습 구간 (마디) — 테두리로 표시
 }
 
 const HS = 3.5 // 반 칸 (px) — 줄 간격 7px
