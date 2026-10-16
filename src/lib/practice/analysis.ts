@@ -78,6 +78,14 @@ export interface DetectOptions {
   reference?: Float32Array
   /** 스피커 → 마이크 지연(초, 지연 측정값). 모르면 비워 두면 소리끼리 맞춰 보고 찾는다 */
   referenceLag?: number | null
+  /**
+   * 이 시각(초, x 기준)까지는 내가 아직 안 치는 구간(카운트인) — 반주가 새는지는 여기서만 판단한다.
+   * 박에 맞춰 잘 치면 내 소리도 반주와 '닮아' 보여서, 칠 때 섞어서 보면 이어폰인데도 샌다고 착각한다.
+   * 판단할 구간이 1초도 안 되면 빼지 않는다. 비우면 전체로 판단 (지연 측정 등)
+   */
+  quietTo?: number
+  /** 'on'/'off' = 판단 없이 빼기 / 안 빼기 (실시간 표시: 카운트인 때 한 번 판단해 두고 그대로 쓴다) */
+  bleedMode?: 'auto' | 'on' | 'off'
   /** 반주가 얼마나 새어 들어왔는지 알려 준다 */
   onBleed?: (b: BleedInfo) => void
 }
@@ -86,6 +94,8 @@ export interface BleedInfo {
   lag: number // 반주가 마이크에 들어온 지연 (초)
   level: number // 마이크 소리가 반주와 얼마나 닮았나 (0 ~ 1, 0.3 넘으면 스피커 소리가 꽤 들어온 것)
   removed: number // 반주 소리라서 버린 후보 수
+  on: boolean // 실제로 뺐는지
+  decided: boolean // 판단할 만큼(카운트인 1초 이상) 들었는지 — false 면 다음에 다시 판단
 }
 
 // 소리 크기 변화(시작 순간들)끼리 맞춰 보며 reference 가 x 에 몇 초 늦게 들어왔는지 찾는다
@@ -123,7 +133,8 @@ function referenceLag(x: Float32Array, r: Float32Array, from: number, to: number
     c /= Math.max(1, n - L)
     if (c > bestC) { bestC = c; best = L }
   }
-  return { lag: guess ?? (best * hop) / sr, corr: Math.max(0, bestC) }
+  // 지연 측정값 근처(±20ms)에서 찾았어도 찾은 자리를 쓴다 (출력 장치가 바뀌어 조금 달라졌을 수 있다)
+  return { lag: (best * hop) / sr, corr: Math.max(0, bestC) }
 }
 
 const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0))
@@ -202,43 +213,51 @@ export async function detectOnsets(x: Float32Array, sr: number, opts: DetectOpti
     const hz = Math.max(30, (b * sr) / N)
     groupOf[b] = Math.min(GROUPS - 1, Math.floor((Math.log(hz / 30) / Math.log(16000 / 30)) * GROUPS))
   }
-  if (R) {
-    const lg = referenceLag(x, R, from, to, sr, hop, opts.referenceLag ?? null)
+  const mode = opts.bleedMode ?? 'auto'
+  if (R && mode !== 'off') {
+    // 새는지 판단은 '안 치는 구간'에서만 — 박에 딱 맞게 치는 사람의 소리가 반주와 닮아 보이지 않게
+    const quietEnd = opts.quietTo != null ? Math.min(to, Math.max(from, Math.round(opts.quietTo * sr))) : to
+    const enoughQuiet = quietEnd - from >= sr
+    const lg = referenceLag(x, R, from, mode === 'on' ? to : quietEnd, sr, hop, opts.referenceLag ?? null)
+    const decided = mode === 'on' || enoughQuiet
+    // 0.25: 짧은 카운트인에서 지연을 넓게 찾으면 우연히 0.15 정도는 닮아 보인다. 실제로 새면 0.6 이상
+    const on = mode === 'on' || (enoughQuiet && lg.corr >= 0.25)
     const lagS = Math.round(lg.lag * sr)
-    // 묶음별 (마이크 / 반주) 비율 — 반주가 뚜렷한 프레임들에서 아래쪽 분위값: 내가 친 소리가 섞인 프레임은 비율이 커서 영향이 적다
-    const ratios: number[][] = Array.from({ length: GROUPS }, () => [])
-    const rLevels: number[][] = Array.from({ length: GROUPS }, () => [])
-    const mx = new Float64Array(half)
-    const mr = new Float64Array(half)
-    const step = Math.max(1, Math.floor(frames / 1500)) // 1500 프레임 정도면 충분
-    for (let f = 0; f < frames; f += step) {
-      const s = from + f * hop
-      spec(R, s - lagS, mr)
-      spec(x, s, mx)
-      const gx = new Float64Array(GROUPS)
-      const gr = new Float64Array(GROUPS)
-      for (let b = 1; b < half; b++) {
-        gx[groupOf[b]] += mx[b]
-        gr[groupOf[b]] += mr[b]
+    if (!on) opts.onBleed?.({ lag: lg.lag, level: lg.corr, removed: 0, on: false, decided })
+    else {
+      // 묶음별 (마이크 / 반주) 비율 — 반주가 뚜렷한 프레임들에서 아래쪽 분위값: 내가 친 소리가 섞인 프레임은 비율이 커서 영향이 적다
+      const ratios: number[][] = Array.from({ length: GROUPS }, () => [])
+      const rLevels: number[][] = Array.from({ length: GROUPS }, () => [])
+      const mx = new Float64Array(half)
+      const mr = new Float64Array(half)
+      const step = Math.max(1, Math.floor(frames / 1500)) // 1500 프레임 정도면 충분
+      for (let f = 0; f < frames; f += step) {
+        const s = from + f * hop
+        spec(R, s - lagS, mr)
+        spec(x, s, mx)
+        const gx = new Float64Array(GROUPS)
+        const gr = new Float64Array(GROUPS)
+        for (let b = 1; b < half; b++) {
+          gx[groupOf[b]] += mx[b]
+          gr[groupOf[b]] += mr[b]
+        }
+        for (let g = 0; g < GROUPS; g++) {
+          if (gr[g] <= 1e-6) continue
+          rLevels[g].push(gr[g])
+          ratios[g].push(gx[g] / gr[g])
+        }
       }
+      const gain = new Float64Array(GROUPS)
       for (let g = 0; g < GROUPS; g++) {
-        if (gr[g] <= 1e-6) continue
-        rLevels[g].push(gr[g])
-        ratios[g].push(gx[g] / gr[g])
+        const lv = [...rLevels[g]].sort((a, b) => a - b)
+        if (lv.length < 20) continue
+        const thr = lv[Math.floor(lv.length * 0.5)] // 반주가 중간 이상 클 때만
+        const rs = ratios[g].filter((_, i) => rLevels[g][i] >= thr).sort((a, b) => a - b)
+        // 아래쪽 10% 값 ×1.25: 반주만 들어온 프레임에선 비율이 거의 일정하고(±30%), 내가 친 프레임은 비율이 위로 튄다
+        gain[g] = rs.length ? rs[Math.floor(rs.length * 0.1)] * 1.25 : 0
       }
+      bleed = { lagS, gain, level: lg.corr }
     }
-    const gain = new Float64Array(GROUPS)
-    for (let g = 0; g < GROUPS; g++) {
-      const lv = [...rLevels[g]].sort((a, b) => a - b)
-      if (lv.length < 20) continue
-      const thr = lv[Math.floor(lv.length * 0.5)] // 반주가 중간 이상 클 때만
-      const rs = ratios[g].filter((_, i) => rLevels[g][i] >= thr).sort((a, b) => a - b)
-      // 아래쪽 10% 값 ×1.25: 반주만 들어온 프레임에선 비율이 거의 일정하고(±30%), 내가 친 프레임은 비율이 위로 튄다
-      gain[g] = rs.length ? rs[Math.floor(rs.length * 0.1)] * 1.25 : 0
-    }
-    // 반주와 닮은 정도가 낮으면(이어폰) 빼지 않는다 — 괜히 빼면 내 소리만 깎인다
-    if (lg.corr >= 0.12) bleed = { lagS, gain, level: lg.corr }
-    else opts.onBleed?.({ lag: lg.lag, level: lg.corr, removed: 0 })
     if (opts.onProgress) await yieldToUI()
   }
   const SPREAD = 2
@@ -421,7 +440,7 @@ export async function detectOnsets(x: Float32Array, sr: number, opts: DetectOpti
     }
     out.push(o)
   }
-  if (bleed) opts.onBleed?.({ lag: bleed.lagS / sr, level: bleed.level, removed })
+  if (bleed) opts.onBleed?.({ lag: bleed.lagS / sr, level: bleed.level, removed, on: true, decided: true })
   opts.onProgress?.(1)
   return out
 }

@@ -55,6 +55,8 @@ export class LiveTracker {
   private rollSpans: [number, number][] = []
   private lat: number | null // 소리 지연 (초). 측정 안 했으면 처음 몇 초 친 걸로 추정
   bleedLevel = 0 // 스피커 반주가 마이크에 들어온 정도 (0~1)
+  private bleedMode: 'auto' | 'on' | 'off' = 'auto'
+  private bleedLag: number | null = null // 카운트인 때 찾은 스피커 → 마이크 지연
 
   constructor(
     private audio: PracticeAudio,
@@ -117,9 +119,29 @@ export class LiveTracker {
       const now = this.audio.ctx.currentTime
       const commitTo = now - TAIL_WAIT
       if (commitTo <= this.committed) return
-      // 스피커로 튼 반주가 마이크에 새어 들어온 건 빼고 찾는다 (워커에서 — 화면이 안 끊기게)
-      const { onsets, bleed } = await detectOnsetsOffThread(rec.samples, rec.sampleRate, { reference: rec.reference, referenceLag: this.lat })
-      if (bleed) this.bleedLevel = Math.max(this.bleedLevel, bleed.level)
+      // 스피커로 튼 반주가 마이크에 새어 들어온 건 빼고 찾는다 (워커에서 — 화면이 안 끊기게).
+      // 새는지는 카운트인(아직 안 칠 때)에 한 번 판단해 두고, 그 뒤엔 판단 없이 빼거나 안 뺀다
+      const opts =
+        this.bleedMode === 'off'
+          ? {}
+          : this.bleedMode === 'on'
+            ? { reference: rec.reference, referenceLag: this.bleedLag, bleedMode: 'on' as const }
+            : {
+                reference: rec.reference,
+                referenceLag: this.o.latency,
+                quietTo: this.o.gridOrigin + (this.o.latency ?? 0) - 0.03 - rec.startTime,
+                bleedMode: 'auto' as const,
+              }
+      const { onsets, bleed } = await detectOnsetsOffThread(rec.samples, rec.sampleRate, opts)
+      if (bleed) {
+        this.bleedLevel = Math.max(this.bleedLevel, bleed.level)
+        if (this.bleedMode === 'auto' && bleed.decided) {
+          this.bleedMode = bleed.on ? 'on' : 'off'
+          if (bleed.on) this.bleedLag = bleed.lag
+        }
+      }
+      // 카운트인이 다 지나도록 판단을 못 했으면(멈칫한 탭 등) 빼지 않는다
+      if (this.bleedMode === 'auto' && this.audio.ctx.currentTime > this.o.gridOrigin + 1.5) this.bleedMode = 'off'
       const lo = Math.max(this.committed, rec.startTime + LEAD_GUARD)
       for (const on of onsets) {
         const tc = rec.startTime + on.time

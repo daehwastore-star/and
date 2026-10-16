@@ -568,8 +568,7 @@ export class ScoreRenderer {
     const last = this.next >= eng.measures.length
     let k = room / sum
     if (last && k > 1.5) k = Math.min(k, 1.12) // 마지막 줄이 짧으면 억지로 늘리지 않는다
-    // 한 마디도 다 안 들어가는 좁은 화면: 최소 폭까지만 줄인다 (그보다 좁히면 음표가 겹치니 그땐 조금 넘친다)
-    if (k < 1) k = Math.max(k, (this.measure(idxs[0]).minW + 20) / sum)
+    // 한 마디도 다 안 들어가는 좁은 화면(32분음표 필인 등): 화면 폭에 맞춰 조인다 — 넘치면 끝부분이 잘려 안 보이고 눌리지도 않는다
     const g = ctx.openGroup('row') as SVGGElement
 
     // 큰보표 사이 간격: 윗오선 아래로 / 아랫오선 위로 튀어나가는 음 만큼

@@ -54,6 +54,7 @@ export async function analyzeRecording(o: {
     // 스피커로 튼 반주가 마이크에 새어 들어온 건 빼고 찾는다
     reference: rec.reference,
     referenceLag: o.latency,
+    quietTo: gridRel + guessLat - 0.03, // 카운트인 끝 (아직 안 칠 때) — 새는지는 여기까지로 판단
     onBleed: b => (bleed = b),
   })
   const exp = o.expected.filter(e => e.m <= o.stoppedAtBar)
@@ -162,6 +163,7 @@ export async function analyzeLoop(o: {
     // 스피커로 튼 반주가 마이크에 새어 들어온 건 빼고 찾는다
     reference: rec.reference,
     referenceLag: o.latency,
+    quietTo: gridRel + guessLat - 0.03, // 카운트인 끝 (아직 안 칠 때) — 새는지는 여기까지로 판단
     onBleed: b => (bleed = b),
   })
   let lat = guessLat

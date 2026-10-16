@@ -39,7 +39,7 @@ function getWorker(): Worker | null {
 export async function detectOnsetsOffThread(
   samples: Float32Array,
   sampleRate: number,
-  opts: { reference?: Float32Array; referenceLag?: number | null } = {},
+  opts: { reference?: Float32Array; referenceLag?: number | null; quietTo?: number; bleedMode?: 'auto' | 'on' | 'off' } = {},
 ): Promise<{ onsets: Onset[]; bleed: BleedInfo | null }> {
   const w = getWorker()
   if (!w) {
@@ -52,7 +52,7 @@ export async function detectOnsetsOffThread(
     pending.set(id, resolve)
     const transfer: ArrayBuffer[] = [samples.buffer as ArrayBuffer]
     if (opts.reference) transfer.push(opts.reference.buffer as ArrayBuffer)
-    w.postMessage({ id, samples, sampleRate, reference: opts.reference, referenceLag: opts.referenceLag ?? null }, transfer)
+    w.postMessage({ id, samples, sampleRate, ...opts, referenceLag: opts.referenceLag ?? null }, transfer)
   })
   if (res.error || !res.onsets) throw new Error(res.error || 'no result')
   return { onsets: res.onsets, bleed: res.bleed ?? null }

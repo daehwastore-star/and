@@ -7,15 +7,17 @@ interface Req {
   sampleRate: number
   reference?: Float32Array
   referenceLag?: number | null
+  quietTo?: number
+  bleedMode?: 'auto' | 'on' | 'off'
 }
 
 const ctx = self as unknown as { onmessage: ((e: MessageEvent<Req>) => void) | null; postMessage: (m: unknown) => void }
 
 ctx.onmessage = async e => {
-  const { id, samples, sampleRate, reference, referenceLag } = e.data
+  const { id, samples, sampleRate, reference, referenceLag, quietTo, bleedMode } = e.data
   let bleed: BleedInfo | null = null
   try {
-    const onsets = await detectOnsets(samples, sampleRate, { reference, referenceLag, onBleed: b => (bleed = b) })
+    const onsets = await detectOnsets(samples, sampleRate, { reference, referenceLag, quietTo, bleedMode, onBleed: b => (bleed = b) })
     ctx.postMessage({ id, onsets, bleed })
   } catch (err) {
     ctx.postMessage({ id, error: String(err) })

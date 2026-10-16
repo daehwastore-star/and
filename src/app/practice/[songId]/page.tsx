@@ -229,6 +229,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     })
   }
   const chooseMyPart = (mp: string) => {
+    if (phase !== 'idle') return // 분석·저장 중에 바꾸면 결과가 다른 파트 악보에 붙는다
     setMyPart(mp)
     setSelSession(null)
     setTake(null)
@@ -269,6 +270,8 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       const player = await getPlayer()
       if (unmounted.current) return
       audio.stopAll()
+      // 녹음할 땐 내 파트 원곡은 끈다 — 같이 틀면 스피커로 샌 원곡이 내 타격으로 잡히거나, 반주 빼기에서 내 타격까지 깎인다
+      if (recording && enabled[myPart]) player.setEnabled(myPart, false)
       if (recording) {
         audio.startRecording()
         recStarted = true
@@ -328,7 +331,10 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       const audio = audioRef.current
       if (audio && recStarted) await audio.stopRecording().catch(() => {})
       audio?.closeMic()
-      if (recording) PracticeAudio.setSession('playback')
+      if (recording) {
+        PracticeAudio.setSession('playback')
+        playerRef.current?.setEnabled(myPart, !!enabled[myPart])
+      }
     } finally {
       busyRef.current = false
     }
@@ -353,6 +359,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     const pos = player.beatNow()
     player.onEnded = null
     player.stop()
+    if (run?.recording) player.setEnabled(run.part, !!enabled[run.part]) // 녹음 때 잠깐 끈 내 파트 원곡 되돌리기
     setImmersive(false)
     trackerRef.current?.stop()
     trackerRef.current = null
@@ -631,7 +638,8 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       lapAcc: each.map(x => x.accuracy),
       mean: Math.round(each.reduce((x, y) => x + y.accuracy, 0) / each.length),
       pooled,
-      troubles: frequentTroubles(tries, cur.onsets, cfg.beatsPerBar, Math.min(3, fresh.laps.length)),
+      // 덜 돈 마지막 바퀴는 뒤쪽 마디가 없으니, 몇 번 틀렸나 기준은 끝까지 돈 바퀴 수로
+      troubles: frequentTroubles(tries, cur.onsets, cfg.beatsPerBar, Math.min(3, Math.max(2, fresh.laps.filter(l => l.toBar === fresh.toBar).length))),
     }
   }, [fresh, multiLap, offset, cur, cfg])
 
@@ -818,7 +826,8 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                       key={k}
                       type="button"
                       onClick={() => chooseMyPart(k)}
-                      className={`rounded-full px-3 py-1.5 text-sm font-semibold ${myPart === k ? 'bg-brand text-white' : 'bg-surface-2 text-zinc-700'}`}
+                      disabled={phase !== 'idle'}
+                      className={`rounded-full px-3 py-1.5 text-sm font-semibold disabled:opacity-50 ${myPart === k ? 'bg-brand text-white' : 'bg-surface-2 text-zinc-700'}`}
                     >
                       {partInfo(k).emoji} {partInfo(k).label}
                     </button>
@@ -826,7 +835,8 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                   <button
                     type="button"
                     onClick={() => chooseMyPart('none')}
-                    className={`rounded-full px-3 py-1.5 text-sm font-semibold ${myPart === 'none' ? 'bg-brand text-white' : 'bg-surface-2 text-zinc-700'}`}
+                    disabled={phase !== 'idle'}
+                    className={`rounded-full px-3 py-1.5 text-sm font-semibold disabled:opacity-50 ${myPart === 'none' ? 'bg-brand text-white' : 'bg-surface-2 text-zinc-700'}`}
                   >
                     🎧 듣기만
                   </button>
@@ -853,7 +863,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                       >
                         <span className={`text-xl ${on ? '' : 'opacity-40 grayscale'}`}>{partInfo(k).emoji}</span>
                         {partInfo(k).label}
-                        {k === myPart && <span className="text-[10px] opacity-80">(내 파트)</span>}
+                        {k === myPart && <span className="text-[10px] opacity-80">{record && on ? '(내 파트 · 녹음 땐 꺼요)' : '(내 파트)'}</span>}
                       </button>
                     )
                   })}
@@ -943,7 +953,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                           setMicId(v)
                           writeJSON(MIC_KEY, v)
                         }}
-                        className="min-w-0 flex-1 truncate rounded-lg bg-surface px-2 py-1.5 text-xs text-zinc-800 outline-none"
+                        className="min-w-0 flex-1 truncate rounded-lg bg-surface px-2 py-1.5 text-base text-zinc-800 outline-none"
                       >
                         <option value="">기본 마이크</option>
                         {mics.map(m => (
