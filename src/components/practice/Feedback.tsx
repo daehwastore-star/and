@@ -17,6 +17,7 @@ export default function Feedback({
   onPlayOrig,
   onPlayMine,
   canPlayMine,
+  onLoopBar,
   playing,
 }: {
   title: string
@@ -31,6 +32,7 @@ export default function Feedback({
   onPlayOrig?: (m: number) => void
   onPlayMine?: (m: number) => void
   canPlayMine: boolean
+  onLoopBar?: (m: number) => void // 이 마디만 반복 연습 시작
   playing: string | null
 }) {
   const sel = selectedBar
@@ -103,7 +105,7 @@ export default function Feedback({
               </span>
             )}
           </div>
-          {(onPlayOrig || onPlayMine) && (
+          {(onPlayOrig || onPlayMine || onLoopBar) && (
             <div className="mt-2 grid grid-cols-2 gap-2">
               {onPlayOrig && (
                 <button
@@ -122,6 +124,11 @@ export default function Feedback({
                   className={`rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40 ${playing === `mine-${sel}` ? 'bg-brand text-white' : 'bg-surface-2 text-brand'}`}
                 >
                   ▶ 내 연주 이 마디
+                </button>
+              )}
+              {onLoopBar && (
+                <button type="button" onClick={() => onLoopBar(sel)} className="col-span-2 rounded-xl bg-surface-2 py-2.5 text-sm font-semibold text-brand">
+                  🔁 이 마디 반복 연습
                 </button>
               )}
             </div>

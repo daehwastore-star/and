@@ -7,17 +7,21 @@ import type { Trouble } from '@/lib/practice/sessions'
 export default function Troubles({
   troubles,
   count,
+  tries,
   trend,
   showHeat,
   onToggleHeat,
   onSelectBar,
+  onLoopBar,
 }: {
   troubles: Trouble[]
-  count: number
+  count: number // 연습(기록) 수
+  tries: number // 친 횟수 — 구간 반복 기록은 한 바퀴가 한 번
   trend: number[] // 오래된 → 최근 정확도
   showHeat: boolean
   onToggleHeat: (v: boolean) => void
   onSelectBar: (m: number) => void
+  onLoopBar?: (m: number) => void // 이 마디만 반복 연습 시작
 }) {
   const bars = byBar(troubles)
   const last = trend.slice(-5)
@@ -26,7 +30,7 @@ export default function Troubles({
     <section className="rounded-2xl bg-surface p-4">
       <div className="flex items-baseline justify-between">
         <h2 className="text-base font-semibold">자주 틀리는 곳</h2>
-        <span className="text-xs text-zinc-500">최근 {count}번 연습 기준</span>
+        <span className="text-xs text-zinc-500">{tries === count ? `최근 ${count}번 연습 기준` : `최근 ${count}번 연습(반복 포함 ${tries}번) 기준`}</span>
       </div>
       {last.length >= 2 && (
         <p className="mt-1 text-sm">
@@ -42,8 +46,8 @@ export default function Troubles({
         <>
           <ul className="mt-2 space-y-1.5">
             {bars.slice(0, 5).map(g => (
-              <li key={g.m}>
-                <button type="button" onClick={() => onSelectBar(g.m)} className="flex w-full items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-left text-sm">
+              <li key={g.m} className="flex items-stretch gap-1.5">
+                <button type="button" onClick={() => onSelectBar(g.m)} className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-left text-sm">
                   <span className="shrink-0 font-semibold">
                     {g.m}마디{g.items.length === 1 && ` ${fmtBeat(g.items[0].beat)}박`}
                   </span>
@@ -55,6 +59,17 @@ export default function Troubles({
                     {g.label}
                   </span>
                 </button>
+                {onLoopBar && (
+                  <button
+                    type="button"
+                    onClick={() => onLoopBar(g.m)}
+                    aria-label={`${g.m}마디 반복 연습`}
+                    title={`${g.m}마디만 반복 연습`}
+                    className="shrink-0 rounded-xl bg-surface-2 px-2.5 text-sm font-semibold text-brand"
+                  >
+                    🔁
+                  </button>
+                )}
               </li>
             ))}
           </ul>

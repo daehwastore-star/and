@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { partInfo } from '@/lib/practice/parts'
-import type { SessionRow } from '@/lib/practice/sessions'
+import { decodeResult, type SessionRow } from '@/lib/practice/sessions'
 
 // 내 연습 기록 — 최근 3개만 보이고 나머지는 '더보기'
 export default function SessionList({
@@ -18,6 +18,15 @@ export default function SessionList({
 }) {
   const [open, setOpen] = useState(false)
   const shown = open ? sessions : sessions.slice(0, 3)
+  // 구간 반복 기록이면 몇 바퀴였는지
+  const lapCount = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const s of sessions) {
+      const d = decodeResult(s)
+      if (d?.loop) m.set(s.id, d.laps.length)
+    }
+    return m
+  }, [sessions])
   return (
     <section className="rounded-2xl bg-surface p-4">
       <div className="flex items-baseline justify-between">
@@ -31,6 +40,8 @@ export default function SessionList({
           {shown.map(s => {
             const tend = !s.calibrated ? '' : Math.abs(s.medianDev) <= 8 ? '박에 붙음' : s.medianDev < 0 ? '서두름' : '끌림'
             const on = s.id === selectedId
+            const laps = lapCount.get(s.id)
+            const bars = s.fromBar === s.toBar ? `${s.fromBar}마디` : `${s.fromBar}~${s.toBar}마디`
             return (
               <li key={s.id} className={`flex items-center gap-2 rounded-xl px-2 py-2 ${on ? 'bg-brand/10' : 'bg-surface-2'}`}>
                 <button type="button" onClick={() => onSelect(s)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
@@ -40,10 +51,19 @@ export default function SessionList({
                       {new Date(s.createdAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short', hour: 'numeric', minute: '2-digit' })}
                     </span>
                     <span className="block truncate text-xs text-zinc-500">
-                      {s.fromBar}~{s.toBar}마디 · 평균 오차 {Math.round(s.meanAbs)}ms{tend && ` · ${tend}`}
+                      {laps ? (
+                        <>
+                          {bars} · <b className="font-semibold text-brand">🔁 {laps}바퀴 · 평균 {s.accuracy}%</b>
+                        </>
+                      ) : (
+                        <>
+                          {bars} · 평균 오차 {Math.round(s.meanAbs)}ms{tend && ` · ${tend}`}
+                        </>
+                      )}
                     </span>
                   </span>
-                  <span className={`shrink-0 text-lg font-extrabold ${s.accuracy >= 80 ? 'text-emerald-600' : s.accuracy >= 55 ? 'text-red-500' : 'text-red-700'}`}>
+                  <span className={`shrink-0 text-right text-lg font-extrabold leading-tight ${s.accuracy >= 80 ? 'text-emerald-600' : s.accuracy >= 55 ? 'text-red-500' : 'text-red-700'}`}>
+                    {laps && <span className="block text-[10px] font-semibold text-zinc-500">바퀴 평균</span>}
                     {s.accuracy}%
                   </span>
                 </button>

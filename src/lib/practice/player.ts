@@ -16,6 +16,7 @@ export interface PlayOptions {
   fromBar: number
   toBar: number
   loop: boolean
+  maxLaps?: number // 반복할 때 이만큼 돌면 끝낸다 (녹음 안전장치) — 없으면 멈출 때까지
 }
 
 interface Session {
@@ -32,6 +33,7 @@ interface Session {
   timer: ReturnType<typeof setTimeout> | null
   nextAt: number // 다음 바퀴 시작 시각 (아직 예약 안 됨)
   pending: number | null // 예약은 됐지만 아직 시작 안 한 바퀴의 시작 시각
+  laps: number // 예약한 바퀴 수 (첫 바퀴 포함)
 }
 
 export class StemPlayer {
@@ -170,20 +172,24 @@ export class StemPlayer {
     return this.bar1 + (bar - 1) * this.barLen
   }
 
-  /** 지금 몇 마디 몇 박 (재생 중이 아니면 null). 카운트인 중이면 bar=0 */
-  position(): { bar: number; beat: number; countIn: number } | null {
+  /** 지금 몇 마디 몇 박 (재생 중이 아니면 null). 카운트인 중이면 bar=0. lap = 몇 번째 바퀴 (1부터, 반복 아니면 1) */
+  position(): { bar: number; beat: number; countIn: number; lap: number } | null {
     const s = this.session
     if (!s) return null
     const now = this.audio.ctx.currentTime
     let t: number // 버퍼 안 위치
+    let lap = 1
     if (now < s.when + s.firstLen || !s.opts.loop) t = s.offStart + Math.min(s.firstLen, Math.max(0, now - s.when))
-    else t = s.loopStart + ((now - s.when - s.firstLen) % s.loopLen)
+    else {
+      t = s.loopStart + ((now - s.when - s.firstLen) % s.loopLen)
+      lap = Math.min(s.laps, 2 + Math.floor((now - s.when - s.firstLen) / s.loopLen))
+    }
     const rel = t - this.bar1
     if (now < s.when + s.preroll) {
-      return { bar: 0, beat: -1, countIn: Math.min(this.countInBeats, Math.floor((now - s.when) / this.spb) + 1) }
+      return { bar: 0, beat: -1, countIn: Math.min(this.countInBeats, Math.floor((now - s.when) / this.spb) + 1), lap }
     }
     const beatIdx = Math.floor(rel / this.spb + 1e-6)
-    return { bar: Math.floor(beatIdx / this.beatsPerBar) + 1, beat: beatIdx % this.beatsPerBar, countIn: 0 }
+    return { bar: Math.floor(beatIdx / this.beatsPerBar) + 1, beat: beatIdx % this.beatsPerBar, countIn: 0, lap }
   }
 
   /** 지금 박 (1마디 1박 = 0, 소수). 재생 중이 아니면 null — 진행선용 */
@@ -205,7 +211,7 @@ export class StemPlayer {
    * 재생. 시작 마디 앞에 카운트인 1마디(메트로놈 소리만)를 넣는다.
    * 돌려주는 gridOrigin = 시작 마디 1박이 실제로 나오는 AudioContext 시각 (박자 체크 녹음 분석에 쓴다)
    */
-  async play(opts: PlayOptions): Promise<{ when: number; gridOrigin: number; clickTimes: number[] }> {
+  async play(opts: PlayOptions): Promise<{ when: number; gridOrigin: number; clickTimes: number[]; loopLen: number }> {
     this.stop()
     const want = this.parts.filter(p => this.enabled[p] || p === 'metronome')
     await Promise.all(want.map(p => this.load(p)))
@@ -233,6 +239,7 @@ export class StemPlayer {
       timer: null,
       nextAt: when + (firstEnd - offStart),
       pending: null,
+      laps: 1,
     }
     this.session = s
     for (const part of this.parts) {
@@ -249,7 +256,7 @@ export class StemPlayer {
     const clickTimes: number[] = []
     const beats = Math.round(s.firstLen / this.spb)
     for (let k = 0; k <= beats; k++) clickTimes.push(offStart + k * this.spb - loopStart)
-    return { when, gridOrigin: when + realPreroll, clickTimes }
+    return { when, gridOrigin: when + realPreroll, clickTimes, loopLen: s.loopLen }
   }
 
   private startSource(part: string, at: number, offset: number, duration: number) {
@@ -267,8 +274,9 @@ export class StemPlayer {
     }
   }
 
-  // 반복: 다음 바퀴를 끝나기 1초 전에 정확한 시각으로 예약
+  // 반복: 다음 바퀴를 끝나기 1초 전에 정확한 시각으로 예약. 정한 바퀴 수를 다 돌면 그 바퀴 끝에서 끝낸다
   private scheduleNextLoop(s: Session) {
+    if (s.opts.maxLaps && s.laps >= s.opts.maxLaps) return this.scheduleFinish(s)
     const ctx = this.audio.ctx
     const lead = Math.max(0, (s.nextAt - ctx.currentTime - 1) * 1000)
     s.timer = setTimeout(() => {
@@ -277,6 +285,7 @@ export class StemPlayer {
       for (const part of this.parts) if (this.buffers.has(part)) this.startSource(part, at, s.loopStart, s.loopLen)
       s.pending = at
       s.nextAt = at + s.loopLen
+      s.laps++
       this.scheduleNextLoop(s)
     }, lead)
   }

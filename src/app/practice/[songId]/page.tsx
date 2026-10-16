@@ -7,15 +7,28 @@ import ScoreView, { EARLY, EXAG, LATE, type HitMark } from '@/components/practic
 import Feedback from '@/components/practice/Feedback'
 import SessionList from '@/components/practice/SessionList'
 import Troubles from '@/components/practice/Troubles'
-import { detectOnsets, estimateLatency, summarize, type MatchResult } from '@/lib/practice/analysis'
+import LapChips, { LiveLapChips } from '@/components/practice/LapChips'
+import LapOverview from '@/components/practice/LapOverview'
+import { detectOnsets, estimateLatency, summarize } from '@/lib/practice/analysis'
 import { clickSamples, renderCalibration } from '@/lib/practice/sounds'
 import { PracticeAudio, type Recording } from '@/lib/practice/engine'
 import { StemPlayer } from '@/lib/practice/player'
 import { LiveTracker, type LiveState } from '@/lib/practice/live'
 import { PARTS, partInfo } from '@/lib/practice/parts'
 import { expectedFromOnsets, onsetsOf, parseScore, scoreHash, type Onset, type PartScore } from '@/lib/practice/score'
-import { decodeResult, encodeResult, frequentTroubles, toMatch, type SessionRow } from '@/lib/practice/sessions'
-import { analyzeRecording, LAT_KEY, readJSON, trimMatch, writeJSON } from '@/lib/practice/check'
+import {
+  decodeResult,
+  encodeLoopResult,
+  encodeResult,
+  frequentTroubles,
+  loopStats,
+  mergeLaps,
+  sessionLaps,
+  sessionTries,
+  type LapResult,
+  type SessionRow,
+} from '@/lib/practice/sessions'
+import { analyzeLoop, analyzeRecording, LAT_KEY, loopLapLimit, readJSON, trimMatch, writeJSON } from '@/lib/practice/check'
 import { getMyId } from '@/lib/identity'
 import { partEmoji } from '@/lib/sheets'
 
@@ -39,11 +52,13 @@ interface LoadedScore {
   onsets: Onset[]
   hash: string
 }
-// 이번에 녹음한 연습 (녹음 원본은 메모리에만 — '내 연주 듣기'용)
+// 이번에 녹음한 연습 (녹음 원본은 메모리에만 — '내 연주 듣기'용). 한 번 친 것은 바퀴 하나
 interface Take {
-  match: MatchResult
+  laps: LapResult[] // 바퀴마다 시각은 그 바퀴 시작 기준
+  loop: boolean
+  loopLen: number // 한 바퀴 길이 (초) — 바퀴 k 의 녹음 위치 = gridOrigin + k × loopLen
   fromBar: number
-  toBar: number
+  toBar: number // 반복이면 반복 구간 끝, 한 번 친 것은 분석한 끝 마디
   calibrated: boolean
   latency: number
   rec: Recording
@@ -82,6 +97,9 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
   const [showHeat, setShowHeat] = useState(false)
   const [playingKey, setPlayingKey] = useState<string | null>(null)
   const [lastBar, setLastBar] = useState<number | null>(null)
+  const [picking, setPicking] = useState(false) // 악보에서 구간 고르는 중
+  const [pickAnchor, setPickAnchor] = useState<number | null>(null) // 처음 누른 마디 (다음에 누르는 마디가 끝)
+  const [lapSel, setLapSel] = useState<number | 'all'>('all') // 반복 연습 결과에서 볼 바퀴
 
   const audioRef = useRef<PracticeAudio | null>(null)
   const playerRef = useRef<StemPlayer | null>(null)
@@ -99,6 +117,9 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     bleedScale: number
     lat: number
     part: string
+    loop: boolean
+    loopLen: number
+    maxLaps: number | null // 녹음하며 반복할 때 안전장치로 멈출 바퀴 수
   } | null>(null)
   const wakeRef = useRef<{ release: () => Promise<void> } | null>(null)
   const scoreRef = useRef<HTMLDivElement>(null)
@@ -205,6 +226,8 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     setSelSession(null)
     setTake(null)
     setSelectedBar(null)
+    setPicking(false)
+    setPickAnchor(null)
     setEnabled(prev => {
       // 내 파트는 끄고, 이전에 내 파트였던 건 다시 켠다
       const next = { ...prev }
@@ -217,10 +240,15 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
   }
 
   // ───────── 연습하기 ─────────
-  const start = async (fromBar = range.from) => {
+  // plan 을 주면 지금 고른 구간·반복 대신 그걸로 ('이 마디 반복 연습' 처럼 바로 시작할 때)
+  const start = async (plan?: { from: number; to: number; loop: boolean }) => {
     if (busyRef.current || finishingRef.current || !cfg) return
     busyRef.current = true
     setMessage('')
+    setPicking(false)
+    setPickAnchor(null)
+    const fromBar = plan?.from ?? range.from
+    const looping = plan?.loop ?? loop
     const recording = record && myPart !== 'none' && !!cur
     let recStarted = false
     try {
@@ -233,8 +261,10 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
         audio.startRecording()
         recStarted = true
       }
-      const to = Math.max(fromBar, range.to)
-      const r = await player.play({ fromBar, toBar: to, loop: loop && !recording })
+      const to = Math.max(fromBar, plan?.to ?? range.to)
+      const loopLen = (to - fromBar + 1) * player.barLen
+      const maxLaps = looping && recording ? loopLapLimit(loopLen) : null
+      const r = await player.play({ fromBar, toBar: to, loop: looping, ...(maxLaps ? { maxLaps } : {}) })
       const mg = player.metronomeGains()
       const lat = latency ? latency.ms / 1000 : (audio.ctx.outputLatency || 0) + (audio.ctx.baseLatency || 0) + 0.03
       runRef.current = {
@@ -247,13 +277,16 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
         bleedScale: mg.countIn > 0 ? mg.song / mg.countIn : 1,
         lat,
         part: myPart,
+        loop: looping,
+        loopLen: r.loopLen,
+        maxLaps,
       }
       player.onEnded = () => finish(false)
       setSelSession(null)
       setSelectedBar(null)
       if (recording && cur) {
         setTake(null)
-        setLive({ marks: new Map(), extras: [] })
+        setLive({ marks: new Map(), extras: [], lap: 0, laps: [] })
         const tr = new LiveTracker(audio, {
           gridOrigin: r.gridOrigin,
           latency: latency ? latency.ms / 1000 : null,
@@ -262,6 +295,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
           countInBeats: cfg.countInBeats,
           metronomeAudible: !!enabled.metronome,
           bleedScale: runRef.current.bleedScale,
+          ...(looping ? { loopLen: r.loopLen, maxLaps: maxLaps ?? undefined } : {}),
           onUpdate: s => !unmounted.current && setLive(s),
         })
         trackerRef.current = tr
@@ -329,6 +363,59 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       if (unmounted.current || !sc) return
       const spb = 60 / cfg.bpm
       const barLen = cfg.beatsPerBar * spb
+      const scoreHash = sc.hash
+      if (run.loop) {
+        // 구간 반복: 다 돈 바퀴 + 멈춘 바퀴에서 1마디 이상 친 것
+        const L = run.loopLen
+        const elapsed = nowCtx - run.gridOrigin
+        let full = Math.max(0, Math.floor(elapsed / L + 1e-6))
+        if (run.maxLaps) full = Math.min(full, run.maxLaps)
+        const partialBars = early ? Math.max(0, Math.min(run.to - run.from, Math.floor((elapsed - full * L) / barLen + 1e-6))) : 0
+        if (full === 0 && partialBars === 0) {
+          setLive(null)
+          setPhase('idle')
+          setMessage('첫 마디가 끝나기 전에 멈춰서 기록하지 않았어요.')
+          return
+        }
+        await sleep(30)
+        const out = await analyzeLoop({
+          expected: expectedFromOnsets(sc.onsets, cfg.bpm, cfg.beatsPerBar, run.from, run.to),
+          rec,
+          gridOriginCtx: run.gridOrigin,
+          latency: latency ? latency.ms / 1000 : null,
+          bpm: cfg.bpm,
+          beatsPerBar: cfg.beatsPerBar,
+          countInBeats: cfg.countInBeats,
+          fromBar: run.from,
+          toBar: run.to,
+          loopLen: L,
+          laps: full,
+          partialBars,
+          clickTimes: run.clickTimes,
+          metronomeAudible: run.metro,
+          bleedScale: run.bleedScale,
+          onProgress: setProgress,
+        })
+        if (unmounted.current) return
+        const t: Take = { laps: out.laps, loop: true, loopLen: L, fromBar: run.from, toBar: run.to, calibrated: out.calibrated, latency: out.latency, rec, gridOrigin: run.gridOrigin }
+        setTake(t)
+        setLive(null)
+        setRelativePick(null)
+        setLapSel(out.laps.length > 1 ? 'all' : 0)
+        const st = loopStats(out.laps, { fromBar: t.fromBar, toBar: t.toBar, calibrated: t.calibrated, barLen })
+        setSelectedBar(summarize(mergeLaps(out.laps), t.fromBar, t.toBar, t.calibrated ? 0 : st.medianDev, barLen).worst[0] ?? null)
+        if (!early && run.maxLaps && full >= run.maxLaps) setMessage(`반복 녹음은 한 번에 최대 40바퀴·10분까지라 ${full}바퀴에서 멈췄어요.`)
+        await saveTake(t, run.part, {
+          accuracy: st.accuracy,
+          medianDev: st.medianDev,
+          meanAbs: st.meanAbs,
+          missed: st.missed,
+          extras: st.extras,
+          result: encodeLoopResult(out.laps, { scoreHash, latencyMs: Math.round(t.latency * 1000), fromBar: t.fromBar, toBar: t.toBar, beatsPerBar: cfg.beatsPerBar, bpm: cfg.bpm }),
+        })
+        setTimeout(() => document.getElementById('feedback')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+        return
+      }
       if (early && nowCtx < run.gridOrigin + barLen) {
         setLive(null)
         setPhase('idle')
@@ -354,42 +441,32 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       })
       if (unmounted.current) return
       const trimmed = early ? trimMatch(out.match, run.from, stoppedAtBar, barLen) : { match: out.match, toBar: stoppedAtBar }
-      const t: Take = { match: trimmed.match, fromBar: run.from, toBar: trimmed.toBar, calibrated: out.calibrated, latency: out.latency, rec, gridOrigin: run.gridOrigin }
+      const t: Take = {
+        laps: [{ match: trimmed.match, toBar: trimmed.toBar }],
+        loop: false,
+        loopLen: 0,
+        fromBar: run.from,
+        toBar: trimmed.toBar,
+        calibrated: out.calibrated,
+        latency: out.latency,
+        rec,
+        gridOrigin: run.gridOrigin,
+      }
       setTake(t)
       setLive(null)
       setRelativePick(null)
-      const raw = summarize(t.match, t.fromBar, t.toBar, 0, barLen)
-      const sum = t.calibrated ? raw : summarize(t.match, t.fromBar, t.toBar, raw.medianDev, barLen)
+      setLapSel(0)
+      const raw = summarize(trimmed.match, t.fromBar, t.toBar, 0, barLen)
+      const sum = t.calibrated ? raw : summarize(trimmed.match, t.fromBar, t.toBar, raw.medianDev, barLen)
       setSelectedBar(sum.worst[0] ?? null)
-      // 자동 저장 (내 기록)
-      if (myId) {
-        await fetch(`/api/practice/${songId}/sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            memberId: myId,
-            part: run.part,
-            fromBar: t.fromBar,
-            toBar: t.toBar,
-            bpm: cfg.bpm,
-            accuracy: sum.accuracy,
-            medianDev: raw.medianDev,
-            meanAbs: sum.meanAbs,
-            missed: sum.missed,
-            extras: sum.extras,
-            calibrated: t.calibrated,
-            result: encodeResult(t.match, { scoreHash: sc.hash, latencyMs: Math.round(t.latency * 1000), fromBar: t.fromBar, beatsPerBar: cfg.beatsPerBar, bpm: cfg.bpm }),
-          }),
-        })
-          .then(r => r.json())
-          .then(d => {
-            if (d.session) {
-              setSessions(prev => [d.session, ...prev])
-              setTake(prev => (prev === t ? { ...t, sessionId: d.session.id } : prev))
-            }
-          })
-          .catch(() => setMessage('연습 기록을 저장하지 못했어요 (인터넷 확인).'))
-      }
+      await saveTake(t, run.part, {
+        accuracy: sum.accuracy,
+        medianDev: raw.medianDev,
+        meanAbs: sum.meanAbs,
+        missed: sum.missed,
+        extras: sum.extras,
+        result: encodeResult(trimmed.match, { scoreHash, latencyMs: Math.round(t.latency * 1000), fromBar: t.fromBar, beatsPerBar: cfg.beatsPerBar, bpm: cfg.bpm }),
+      })
       setTimeout(() => document.getElementById('feedback')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
     } catch (e) {
       setMessage(errorText(e))
@@ -398,8 +475,45 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     }
   }
 
+  // 자동 저장 (내 기록)
+  const saveTake = async (t: Take, part: string, stats: { accuracy: number; medianDev: number; meanAbs: number; missed: number; extras: number; result: string }) => {
+    if (!myId || !cfg) return
+    await fetch(`/api/practice/${songId}/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberId: myId, part, fromBar: t.fromBar, toBar: t.toBar, bpm: cfg.bpm, calibrated: t.calibrated, ...stats }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.session) {
+          setSessions(prev => [d.session, ...prev])
+          setTake(prev => (prev === t ? { ...t, sessionId: d.session.id } : prev))
+        }
+      })
+      .catch(() => setMessage('연습 기록을 저장하지 못했어요 (인터넷 확인).'))
+  }
+
   const stop = () => {
     if (runRef.current) finish(true)
+  }
+
+  // 이 마디만 반복 연습 (피드백·자주 틀리는 곳에서 바로 시작)
+  const loopBar = (m: number) => {
+    setRange({ from: m, to: m })
+    setLoop(true)
+    start({ from: m, to: m, loop: true })
+  }
+
+  // 악보에서 구간 고르기: 처음 누른 마디 = 시작, 다음에 누른 마디 = 끝 (같은 마디 두 번 = 그 마디만)
+  const pickBar = (m: number) => {
+    if (pickAnchor === null) {
+      setPickAnchor(m)
+      setRange({ from: m, to: m })
+      return
+    }
+    setRange({ from: Math.min(pickAnchor, m), to: Math.max(pickAnchor, m) })
+    setPickAnchor(null)
+    setLoop(true)
   }
 
   // ───────── 지연 측정 ─────────
@@ -457,35 +571,75 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       if (!s || !d) return null
       const fits = d.scoreHash === cur.hash
       if (!fits) return { title: '', stale: true as const }
-      const match = toMatch(d, cur.onsets, { fromBar: s.fromBar, beatsPerBar: cfg.beatsPerBar, bpm: s.bpm })
-      return { title: fmtDate(s.createdAt), match, fromBar: s.fromBar, toBar: s.toBar, calibrated: s.calibrated, barLen, stale: false as const, current: false }
+      const laps = sessionLaps(s, d, cur.onsets, cfg.beatsPerBar)
+      return { title: fmtDate(s.createdAt), laps, loop: d.loop, fromBar: s.fromBar, toBar: s.toBar, calibrated: s.calibrated, barLen, stale: false as const, current: false }
     }
-    if (take && (!selSession || selSession === take.sessionId)) return { title: '방금 한 연습', match: take.match, fromBar: take.fromBar, toBar: take.toBar, calibrated: take.calibrated, barLen, stale: false as const, current: true }
+    if (take && (!selSession || selSession === take.sessionId))
+      return {
+        title: take.loop ? '방금 한 반복 연습' : '방금 한 연습',
+        laps: take.laps,
+        loop: take.loop,
+        fromBar: take.fromBar,
+        toBar: take.toBar,
+        calibrated: take.calibrated,
+        barLen,
+        stale: false as const,
+        current: true,
+      }
     return null
   }, [cfg, cur, selSession, sessions, take])
 
-  const relative = relativePick ?? (view && !view.stale ? !view.calibrated : false)
-  const raw = useMemo(() => (view && !view.stale ? summarize(view.match, view.fromBar, view.toBar, 0, view.barLen) : null), [view])
-  const summary = useMemo(
-    () => (view && !view.stale && raw ? summarize(view.match, view.fromBar, view.toBar, relative ? raw.medianDev : 0, view.barLen) : null),
-    [view, raw, relative],
-  )
+  const fresh = view && !view.stale ? view : null
+  const multiLap = !!fresh && fresh.loop && fresh.laps.length > 1
+  // 볼 바퀴 (null = '전체')
+  const lapIdx = !fresh ? null : multiLap ? (lapSel === 'all' ? null : Math.min(lapSel, fresh.laps.length - 1)) : 0
+  const lap = fresh && lapIdx !== null ? fresh.laps[lapIdx] : null
+  const relative = relativePick ?? (fresh ? !fresh.calibrated : false)
+  // '내 평균'은 모든 바퀴를 합친 중앙값 (한 번 친 것은 그 연습의 중앙값 — 예전과 같다)
+  const raw = useMemo(() => (fresh ? summarize(mergeLaps(fresh.laps), fresh.fromBar, fresh.toBar, 0, fresh.barLen) : null), [fresh])
+  const offset = relative && raw ? raw.medianDev : 0
+  const summary = useMemo(() => (fresh && lap ? summarize(lap.match, fresh.fromBar, lap.toBar, offset, fresh.barLen) : null), [fresh, lap, offset])
+  // '전체' 보기: 바퀴별 요약 · 합친 요약 · 여러 바퀴에서 틀린 음
+  const overview = useMemo(() => {
+    if (!fresh || !multiLap || !cur || !cfg) return null
+    const each = fresh.laps.map(l => summarize(l.match, fresh.fromBar, l.toBar, offset, fresh.barLen))
+    const pooled = summarize(mergeLaps(fresh.laps), fresh.fromBar, fresh.toBar, offset, fresh.barLen)
+    const tries = fresh.laps.map(l => ({ hits: l.match.hits.map(h => [h.idx, h.dev] as [number, number | null]), offset }))
+    return {
+      lapAcc: each.map(x => x.accuracy),
+      mean: Math.round(each.reduce((x, y) => x + y.accuracy, 0) / each.length),
+      pooled,
+      troubles: frequentTroubles(tries, cur.onsets, cfg.beatsPerBar, Math.min(3, fresh.laps.length)),
+    }
+  }, [fresh, multiLap, offset, cur, cfg])
 
   // 악보에 겹칠 표시
   const marks = useMemo(() => {
     if (phase === 'playing') {
-      // 연습 중엔 이번 연습의 실시간 표시만 (녹음 안 하면 깨끗한 악보)
+      // 연습 중엔 이번 연습(반복이면 지금 바퀴)의 실시간 표시만 (녹음 안 하면 깨끗한 악보)
       if (!live) return undefined
       const m = new Map<number, HitMark>()
       for (const [idx, dev] of live.marks) m.set(idx, { dev })
       return m
     }
-    if (!view || view.stale || !raw) return undefined
-    const off = relative ? raw.medianDev : 0
+    if (!fresh) return undefined
     const m = new Map<number, HitMark>()
-    for (const h of view.match.hits) m.set(h.idx, { dev: h.dev === null ? null : h.dev - off })
+    if (lap) {
+      for (const h of lap.match.hits) m.set(h.idx, { dev: h.dev === null ? null : h.dev - offset })
+      return m
+    }
+    // '전체': 음표마다 바퀴 평균 (절반 넘게 놓쳤으면 놓침)
+    const acc = new Map<number, { n: number; devs: number[] }>()
+    for (const l of fresh.laps)
+      for (const h of l.match.hits) {
+        const a = acc.get(h.idx) ?? { n: 0, devs: [] }
+        a.n++
+        if (h.dev !== null) a.devs.push(h.dev)
+        acc.set(h.idx, a)
+      }
+    for (const [idx, a] of acc) m.set(idx, { dev: a.devs.length && a.devs.length * 2 >= a.n ? Math.round((a.devs.reduce((x, y) => x + y, 0) / a.devs.length - offset) * 10) / 10 : null })
     return m
-  }, [phase, live, view, raw, relative])
+  }, [phase, live, fresh, lap, offset])
   const extras = useMemo(() => {
     if (!cfg) return undefined
     const spb = 60 / cfg.bpm
@@ -494,22 +648,24 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       const base = (runRef.current.from - 1) * cfg.beatsPerBar
       return live.extras.map(t => base + t / spb)
     }
-    if (!view || view.stale) return undefined
-    const base = (view.fromBar - 1) * cfg.beatsPerBar
-    return view.match.extras.map(t => base + t / spb)
-  }, [cfg, phase, live, view])
+    if (!fresh || !lap) return undefined
+    const base = (fresh.fromBar - 1) * cfg.beatsPerBar
+    return lap.match.extras.map(t => base + t / spb)
+  }, [cfg, phase, live, fresh, lap])
 
-  // 자주 틀리는 곳 (같은 악보로 3번 이상)
+  // 자주 틀리는 곳 (같은 악보로 3번 이상 — 반복 연습은 한 바퀴가 한 번)
   const troubleData = useMemo(() => {
     if (!cur || !cfg) return null
     const rows = sessions
       .map(s => ({ s, d: decodeResult(s) }))
       .filter((x): x is { s: SessionRow; d: NonNullable<ReturnType<typeof decodeResult>> } => !!x.d && x.d.scoreHash === cur.hash)
-    if (rows.length < 3) return { count: rows.length, troubles: null, trend: [] as number[] }
     const recent = rows.slice(0, 10)
+    const tries = sessionTries(recent)
+    if (tries.length < 3) return { count: recent.length, tries: tries.length, troubles: null, trend: [] as number[] }
     return {
       count: recent.length,
-      troubles: frequentTroubles(recent, cur.onsets, cfg.beatsPerBar),
+      tries: tries.length,
+      troubles: frequentTroubles(tries, cur.onsets, cfg.beatsPerBar),
       trend: recent.map(r => r.s.accuracy).reverse(),
     }
   }, [sessions, cur, cfg])
@@ -531,8 +687,10 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     setPlayingKey(`orig-${m}`)
     setTimeout(() => setPlayingKey(k => (k === `orig-${m}` ? null : k)), dur * 1000)
   }
+  // 반복 연습이면 고른 바퀴의 그 마디 (녹음 안에서 바퀴 k 는 k × 한 바퀴 길이만큼 뒤)
   const playMine = async (m: number) => {
     if (!take || !cfg || phase !== 'idle') return
+    const lapK = take.loop ? (lapIdx ?? 0) : 0
     const audio = await getAudio()
     audio.stopAll()
     playerRef.current?.stop()
@@ -552,7 +710,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     }
     if (!take.buffer) take.buffer = audio.makeBuffer([take.rec.samples])
     // 녹음은 지연만큼 늦게 들어와 있으니 그만큼 앞당겨 틀어야 클릭과 맞는다
-    const off = take.gridOrigin + t0 + take.latency - take.rec.startTime
+    const off = take.gridOrigin + lapK * take.loopLen + t0 + take.latency - take.rec.startTime
     const seg = take.rec.samples.subarray(Math.max(0, Math.floor(off * sr)), Math.max(0, Math.floor((off + segLen) * sr)))
     let peak = 0
     for (const v of seg) peak = Math.max(peak, Math.abs(v))
@@ -594,8 +752,23 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
   const total = cfg?.bars ?? 1
   const playing = phase === 'playing'
   const recordingNow = playing && !!runRef.current?.recording
-  const scoreFrom = playing && runRef.current ? runRef.current.from : view && !view.stale ? view.fromBar : range.from
-  const scoreTo = playing && runRef.current ? runRef.current.to : view && !view.stale ? view.toBar : range.to
+  const loopingNow = playing && !!runRef.current?.loop
+  const pickingNow = picking && !playing
+  // 구간 고르는 중엔 곡 전체를 펼쳐 놓는다
+  const scoreFrom = playing && runRef.current ? runRef.current.from : pickingNow ? 1 : fresh ? fresh.fromBar : range.from
+  const scoreTo = playing && runRef.current ? runRef.current.to : pickingNow ? total : fresh ? fresh.toBar : range.to
+  const scoreRange = playing
+    ? null
+    : pickingNow
+      ? pickAnchor !== null
+        ? { from: pickAnchor, to: pickAnchor }
+        : range
+      : range.from > scoreFrom || range.to < scoreTo
+        ? range
+        : null
+  const recordOn = record && myPart !== 'none'
+  const rangeText = range.from === range.to ? `${range.from}마디` : `${range.from}~${range.to}마디`
+  const lapTitle = fresh ? (multiLap ? (lapIdx === null ? `${fresh.title} · 전체 ${fresh.laps.length}바퀴` : `${fresh.title} · ${lapIdx + 1}바퀴째`) : fresh.title) : ''
 
   return (
     <main className="px-4 pt-6">
@@ -698,8 +871,8 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                   <BarSelect value={range.to} max={total} label="끝 마디" onChange={v => setRange(r => ({ to: v, from: Math.min(v, r.from) }))} />
                   <span className="text-zinc-500">마디</span>
                 </div>
-                <label className={`flex items-center gap-1.5 text-sm ${record && myPart !== 'none' ? 'opacity-40' : ''}`}>
-                  <input type="checkbox" checked={loop && !(record && myPart !== 'none')} disabled={record && myPart !== 'none'} onChange={e => setLoop(e.target.checked)} className="h-4 w-4 accent-[#7c3aed]" />
+                <label className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" checked={loop} onChange={e => setLoop(e.target.checked)} className="h-4 w-4 accent-[#7c3aed]" />
                   반복
                 </label>
               </div>
@@ -707,6 +880,11 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                 <button type="button" onClick={() => setRange({ from: 1, to: total })} className="-mt-2 text-xs text-brand">
                   처음부터 끝까지로
                 </button>
+              )}
+              {loop && recordOn && (
+                <p className="-mt-2 text-[11px] leading-relaxed text-zinc-500">
+                  🔁 고른 마디를 멈출 때까지 계속 돌아요. 바퀴마다 박자를 체크하고, 그만두면 바퀴별로 분석해 기록 하나로 저장해요 (최대 40바퀴·10분).
+                </p>
               )}
 
               {myPart !== 'none' && (
@@ -755,25 +933,31 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                 </div>
               </div>
             ) : playing ? (
-              <div className="flex items-center gap-3">
-                {recordingNow && <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />}
-                <PosText player={playerRef.current} beatsPerBar={cfg.beatsPerBar} total={total} />
-                <button type="button" onClick={stop} className={`ml-auto shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold ${recordingNow ? 'bg-white/15' : 'bg-zinc-900 text-white'}`}>
-                  ■ {recordingNow ? '그만 (분석)' : '정지'}
-                </button>
+              <div>
+                <div className="flex items-center gap-3">
+                  {recordingNow && <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />}
+                  <PosText player={playerRef.current} beatsPerBar={cfg.beatsPerBar} total={total} loop={loopingNow} />
+                  <button type="button" onClick={stop} className={`ml-auto shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold ${recordingNow ? 'bg-white/15' : 'bg-zinc-900 text-white'}`}>
+                    ■ {recordingNow ? '그만 (분석)' : '정지'}
+                  </button>
+                </div>
+                {recordingNow && loopingNow && live && live.laps.length > 0 && <LiveLapChips laps={live.laps} />}
               </div>
             ) : (
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => start(range.from)}
+                  onClick={() => start()}
                   disabled={phase !== 'idle'}
                   className="flex-1 rounded-xl bg-brand py-3.5 text-base font-bold text-white active:bg-brand-dark disabled:opacity-50"
                 >
-                  {record && myPart !== 'none' ? '● 연습하기 (녹음)' : '▶ 연습하기'} · {range.from}~{range.to}마디
+                  {loop
+                    ? `${recordOn ? '●' : '▶'} 🔁 ${rangeText} 반복${recordOn ? ' (녹음)' : ''}`
+                    : `${recordOn ? '● 연습하기 (녹음)' : '▶ 연습하기'} · ${rangeText}`}
                 </button>
-                {lastBar && lastBar > range.from && lastBar <= range.to && (
-                  <button type="button" onClick={() => start(lastBar)} className="shrink-0 rounded-xl bg-surface-2 px-3 text-sm font-semibold text-brand">
+                {/* 녹음하며 반복할 땐 구간이 몰래 바뀌지 않게 숨긴다 */}
+                {!(loop && recordOn) && lastBar && lastBar > range.from && lastBar <= range.to && (
+                  <button type="button" onClick={() => start({ from: lastBar, to: range.to, loop })} className="shrink-0 rounded-xl bg-surface-2 px-3 text-sm font-semibold text-brand">
                     {lastBar}마디부터
                   </button>
                 )}
@@ -784,12 +968,40 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
           {/* 악보 */}
           {myPart !== 'none' && (
             <section ref={scoreRef} className="mt-3 scroll-mt-24 rounded-2xl bg-surface px-1 py-3">
-              <div className="flex items-center justify-between px-3">
-                <h2 className="text-base font-semibold">
+              <div className="flex items-center justify-between gap-2 px-3">
+                <h2 className="shrink-0 text-base font-semibold">
                   {partInfo(myPart).emoji} {partInfo(myPart).label} 악보
                 </h2>
-                <span className="text-[11px] text-zinc-500">{playing ? '진행선을 따라 치세요' : view && !view.stale ? view.title : ''}</span>
+                {playing ? (
+                  <span className="truncate text-[11px] text-zinc-500">{recordingNow && loopingNow ? '바퀴마다 새로 표시해요' : '진행선을 따라 치세요'}</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPicking(v => !v)
+                      setPickAnchor(null)
+                    }}
+                    aria-pressed={picking}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${picking ? 'bg-brand text-white' : 'bg-surface-2 text-brand'}`}
+                  >
+                    {picking ? '✓ 다 골랐어요' : '🔁 구간 고르기'}
+                  </button>
+                )}
               </div>
+              {pickingNow && (
+                <p className="mx-3 mt-2 rounded-xl bg-brand/10 px-3 py-2 text-xs leading-relaxed text-brand">
+                  {pickAnchor === null ? (
+                    <>
+                      <b>{rangeText}</b> 골랐어요 · 다시 고르려면 시작 마디를 누르세요
+                    </>
+                  ) : (
+                    <>
+                      <b>{pickAnchor}마디</b>부터 · 끝 마디를 누르세요 (같은 마디를 한 번 더 누르면 그 마디만)
+                    </>
+                  )}
+                </p>
+              )}
+              {!playing && !pickingNow && lapTitle && <p className="mt-0.5 truncate px-3 text-right text-[11px] text-zinc-500">{lapTitle}</p>}
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 px-3 text-[11px] text-zinc-500">
                 <span className="flex items-center gap-1">
                   <span className="h-2.5 w-2.5 rounded-full bg-zinc-900" /> 악보 (정확하면 그대로)
@@ -818,10 +1030,11 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                     marks={marks}
                     extras={extras}
                     heat={heat}
-                    selectedBar={playing ? null : selectedBar}
-                    onSelectBar={playing ? undefined : m => setSelectedBar(m)}
+                    selectedBar={playing || pickingNow ? null : selectedBar}
+                    onSelectBar={playing ? undefined : pickingNow ? pickBar : m => setSelectedBar(m)}
                     playhead={playhead}
                     follow={playing}
+                    range={scoreRange}
                   />
                 ) : (
                   <p className="px-3 py-6 text-center text-sm text-zinc-500">악보 불러오는 중…</p>
@@ -830,27 +1043,62 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
             </section>
           )}
 
-          {/* 피드백 */}
-          {!playing && summary && raw && view && !view.stale && (
-            <div id="feedback" className="mt-4 scroll-mt-24">
-              <Feedback
-                title={view.title}
-                summary={summary}
-                relative={relative}
-                calibrated={view.calibrated}
-                rawMedian={raw.medianDev}
-                onToggleRelative={v => setRelativePick(v)}
-                hits={view.match.hits}
-                selectedBar={selectedBar}
-                onSelectBar={m => {
-                  setSelectedBar(m)
-                  scoreRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                }}
-                onPlayOrig={myPart !== 'none' ? playOrig : undefined}
-                onPlayMine={view.current ? playMine : undefined}
-                canPlayMine={!!take && view.current}
-                playing={playingKey}
-              />
+          {/* 피드백 (반복 연습이면 바퀴 고르기 + 전체/바퀴별) */}
+          {!playing && fresh && raw && (summary || overview) && (
+            <div id="feedback" className="mt-4 scroll-mt-24 space-y-2">
+              {multiLap && overview && (
+                <LapChips
+                  laps={overview.lapAcc}
+                  mean={overview.mean}
+                  selected={lapIdx === null ? 'all' : lapIdx}
+                  onSelect={v => setLapSel(v)}
+                />
+              )}
+              {lap && summary ? (
+                <Feedback
+                  title={lapTitle}
+                  summary={summary}
+                  relative={relative}
+                  calibrated={fresh.calibrated}
+                  rawMedian={raw.medianDev}
+                  onToggleRelative={v => setRelativePick(v)}
+                  hits={lap.match.hits}
+                  selectedBar={selectedBar}
+                  onSelectBar={m => {
+                    setSelectedBar(m)
+                    scoreRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }}
+                  onPlayOrig={myPart !== 'none' ? playOrig : undefined}
+                  onPlayMine={fresh.current ? playMine : undefined}
+                  canPlayMine={!!take && fresh.current}
+                  onLoopBar={loopBar}
+                  playing={playingKey}
+                />
+              ) : (
+                overview && (
+                  <LapOverview
+                    title={lapTitle}
+                    lapAcc={overview.lapAcc}
+                    mean={overview.mean}
+                    pooled={overview.pooled}
+                    troubles={overview.troubles}
+                    relative={relative}
+                    calibrated={fresh.calibrated}
+                    rawMedian={raw.medianDev}
+                    onToggleRelative={v => setRelativePick(v)}
+                    lapHits={fresh.laps.map(l => l.match.hits)}
+                    selectedBar={selectedBar}
+                    onSelectBar={m => {
+                      setSelectedBar(m)
+                      scoreRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }}
+                    onSelectLap={k => setLapSel(k)}
+                    onPlayOrig={myPart !== 'none' ? playOrig : undefined}
+                    onLoopBar={loopBar}
+                    playing={playingKey}
+                  />
+                )
+              )}
             </div>
           )}
 
@@ -859,6 +1107,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
               <Troubles
                 troubles={troubleData.troubles}
                 count={troubleData.count}
+                tries={troubleData.tries}
                 trend={troubleData.trend}
                 showHeat={showHeat}
                 onToggleHeat={setShowHeat}
@@ -867,11 +1116,12 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                   setShowHeat(true)
                   scoreRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                 }}
+                onLoopBar={loopBar}
               />
             </div>
           )}
           {!playing && myPart !== 'none' && troubleData && !troubleData.troubles && troubleData.count > 0 && (
-            <p className="mt-3 text-center text-xs text-zinc-500">연습을 {3 - troubleData.count}번 더 하면 자주 틀리는 곳을 짚어 드려요.</p>
+            <p className="mt-3 text-center text-xs text-zinc-500">연습을 {3 - troubleData.tries}번 더 하면 자주 틀리는 곳을 짚어 드려요.</p>
           )}
 
           {!playing && myPart !== 'none' && (
@@ -883,8 +1133,10 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                   setSelSession(s.id)
                   setRelativePick(null)
                   const d = decodeResult(s)
+                  setLapSel(d && d.loop && d.laps.length > 1 ? 'all' : 0)
                   if (d && cur && d.scoreHash === cur.hash && cfg) {
-                    const sum = summarize(toMatch(d, cur.onsets, { fromBar: s.fromBar, beatsPerBar: cfg.beatsPerBar, bpm: s.bpm }), s.fromBar, s.toBar, s.calibrated ? 0 : s.medianDev)
+                    const laps = sessionLaps(s, d, cur.onsets, cfg.beatsPerBar)
+                    const sum = summarize(mergeLaps(laps), s.fromBar, s.toBar, s.calibrated ? 0 : s.medianDev)
                     setSelectedBar(sum.worst[0] ?? null)
                   }
                   setTimeout(() => document.getElementById('feedback')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
@@ -914,21 +1166,31 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
   )
 }
 
-// 지금 마디 (자주 바뀌니 따로 그린다)
-function PosText({ player, beatsPerBar, total }: { player: StemPlayer | null; beatsPerBar: number; total: number }) {
+// 지금 마디 (자주 바뀌니 따로 그린다). 반복이면 몇 바퀴째인지도
+function PosText({ player, beatsPerBar, total, loop }: { player: StemPlayer | null; beatsPerBar: number; total: number; loop: boolean }) {
   const [txt, setTxt] = useState('준비…')
+  const [lap, setLap] = useState(1)
   useEffect(() => {
     let raf = 0
-    const loop = () => {
-      raf = requestAnimationFrame(loop)
+    const tick = () => {
+      raf = requestAnimationFrame(tick)
       const p = player?.position()
       if (!p) return
       setTxt(p.bar === 0 ? `준비… ${p.countIn || ''}` : `${Math.min(p.bar, total)}마디 ${p.beat + 1}박`)
+      setLap(p.lap)
     }
-    raf = requestAnimationFrame(loop)
+    raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [player, beatsPerBar, total])
-  return <span className="text-lg font-extrabold tabular-nums">{txt}</span>
+  if (!loop) return <span className="text-lg font-extrabold tabular-nums">{txt}</span>
+  return (
+    <span className="flex min-w-0 flex-col leading-tight">
+      <span className="text-xs font-bold tabular-nums opacity-80" data-testid="lap-now">
+        🔁 {lap}바퀴째
+      </span>
+      <span className="text-lg font-extrabold tabular-nums">{txt}</span>
+    </span>
+  )
 }
 
 function fmtDate(s: string) {

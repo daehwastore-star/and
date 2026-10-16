@@ -5,12 +5,18 @@
 //
 // 같은 소리를 여러 번 훑으면 매번 시각이 조금씩 달라 이중으로 잡히므로, 시간 구간마다 딱 한 번만 '확정'한다.
 // 창 맨 앞쪽은 앞 맥락이 없어 가짜 타격이 생기니 버리고, 맨 뒤쪽은 소리가 덜 들어왔으니 다음 차례로 미룬다.
-import { detectOnsets, estimateBleed, estimateGlobalLag, matchHits, type ExpectedHit } from './analysis'
+//
+// 구간 반복: 정답을 바퀴 수만큼 이어 붙여(바퀴마다 loopLen 초씩 뒤로) 한 줄로 짝짓는다 — 바퀴 경계도 한 번만 판정된다.
+// 화면에는 지금 바퀴 표시만 주고, 다 돈 바퀴는 대략 정확도만 넘긴다.
+import { detectOnsets, estimateBleed, estimateGlobalLag, GOOD_MS, matchHits, type ExpectedHit } from './analysis'
+import { loopClicks, LOOP_MAX_LAPS } from './check'
 import type { PracticeAudio } from './engine'
 
 export interface LiveState {
-  marks: Map<number, number | null> // onset idx → 오차 ms (null = 놓침)
-  extras: number[] // 악보에 없는 타격 — 구간 시작 기준 초
+  marks: Map<number, number | null> // 지금 바퀴: onset idx → 오차 ms (null = 놓침)
+  extras: number[] // 지금 바퀴의 악보에 없는 타격 — 바퀴 시작(구간 첫 마디 1박) = 0 기준 초
+  lap: number // 지금 바퀴 (0부터). 반복이 아니면 늘 0
+  laps: number[] // 다 돈 바퀴들의 대략 정확도 (%)
 }
 
 interface Heard {
@@ -34,8 +40,17 @@ export class LiveTracker {
   private bleed: number | null | undefined = undefined // undefined = 아직 안 잼
   private decided = 0 // exp 앞에서부터 결정 끝난 개수
   private matchedS: number[] = []
-  private state: LiveState = { marks: new Map(), extras: [] }
-  private exp: ExpectedHit[]
+  private exp: ExpectedHit[] // 바퀴를 이어 붙인 정답 (반복이 아니면 한 바퀴)
+  private lapOf: number[] = []
+  private perLap: number // 한 바퀴 정답 수
+  private loopLen: number | null
+  private maxLaps: number
+  private clicks: number[] // 같이 튼 클릭 (바퀴마다 되풀이, 정렬됨)
+  private lapMarks: Map<number, number | null>[] = []
+  private lapExtras: number[][] = []
+  private lapJudged: (number | null)[][] = [] // 바퀴별 판정 대상(롤 제외) 오차
+  private allDevs: number[] = []
+  private curLap = 0
   private rollSpans: [number, number][] = []
   private lat: number | null // 소리 지연 (초). 측정 안 했으면 처음 몇 초 친 걸로 추정
 
@@ -44,19 +59,37 @@ export class LiveTracker {
     private o: {
       gridOrigin: number
       latency: number | null
-      expected: ExpectedHit[]
-      clickTimes?: number[] // 같이 튼 클릭 (구간 첫 마디 1박 = 0)
+      expected: ExpectedHit[] // 한 바퀴 (구간 첫 마디 1박 = 0)
+      clickTimes?: number[] // 같이 튼 클릭 (첫 바퀴, 카운트인 포함)
       countInBeats?: number
       metronomeAudible?: boolean
       bleedScale?: number
+      loopLen?: number // 구간 반복이면 한 바퀴 길이 (초)
+      maxLaps?: number
       onUpdate: (s: LiveState) => void
     },
   ) {
     this.lat = o.latency
-    this.exp = [...o.expected].sort((a, b) => a.t - b.t)
+    const one = [...o.expected].sort((a, b) => a.t - b.t)
+    this.perLap = one.length
+    this.loopLen = o.loopLen && o.loopLen > 0 ? o.loopLen : null
+    this.maxLaps = this.loopLen ? Math.max(1, o.maxLaps ?? LOOP_MAX_LAPS) : 1
+    this.exp = []
+    for (let k = 0; k < this.maxLaps; k++)
+      for (const e of one) {
+        this.exp.push(k ? { ...e, t: e.t + k * (this.loopLen ?? 0) } : e)
+        this.lapOf.push(k)
+      }
+    for (let k = 0; k < this.maxLaps; k++) {
+      this.lapMarks.push(new Map())
+      this.lapExtras.push([])
+      this.lapJudged.push([])
+    }
     this.exp.forEach((e, i) => {
       if (e.roll) this.rollSpans.push([e.t - 0.05, i + 1 < this.exp.length ? this.exp[i + 1].t - 0.05 : e.t + 3])
     })
+    const ct = o.clickTimes ?? []
+    this.clicks = this.loopLen ? loopClicks(ct, this.loopLen, this.maxLaps) : [...ct].sort((a, b) => a - b)
   }
 
   start() {
@@ -96,7 +129,14 @@ export class LiveTracker {
       this.committed = commitTo
       if (this.lat === null && !this.guessLatency(commitTo - this.o.gridOrigin)) return
       const until = commitTo - (this.lat ?? 0) - this.o.gridOrigin // 구간 기준, 여기까지 들은 셈
-      if (this.settle(until)) this.emit()
+      let changed = this.settle(until)
+      // 들은 시각이 다음 바퀴로 넘어가면 악보 표시를 비운다 (지난 바퀴 끝 음은 정확도에만 들어간다)
+      const lap = this.loopLen ? Math.max(0, Math.min(this.maxLaps - 1, Math.floor(until / this.loopLen))) : 0
+      if (lap !== this.curLap) {
+        this.curLap = lap
+        changed = true
+      }
+      if (changed) this.emit()
     } catch {
       // 실시간 표시는 보조 기능 — 실패해도 녹음·최종 분석엔 영향 없음
     } finally {
@@ -105,13 +145,18 @@ export class LiveTracker {
   }
 
   private emit() {
-    let marks = this.state.marks
     // 지연 측정 없이 하면 절대 박자를 모르니, 지금까지 친 것의 중앙값을 0으로 (끝난 뒤 '내 평균 기준'과 같은 방식)
-    if (this.o.latency === null) {
-      const off = median([...marks.values()].filter((v): v is number => v !== null))
-      marks = new Map([...marks].map(([k, v]) => [k, v === null ? null : Math.round((v - off) * 10) / 10]))
-    } else marks = new Map(marks)
-    this.o.onUpdate({ marks, extras: [...this.state.extras] })
+    const off = this.o.latency === null ? median(this.allDevs) : 0
+    const cur = this.lapMarks[this.curLap]
+    const marks = off ? new Map([...cur].map(([k, v]) => [k, v === null ? null : Math.round((v - off) * 10) / 10])) : new Map(cur)
+    const done = this.perLap ? Math.min(this.maxLaps, Math.floor(this.decided / this.perLap)) : 0
+    const laps: number[] = []
+    for (let k = 0; k < done; k++) {
+      const ds = this.lapJudged[k]
+      const good = ds.filter(d => d !== null && Math.abs(d - off) <= GOOD_MS).length
+      laps.push(ds.length ? Math.round((good / ds.length) * 100) : 0)
+    }
+    this.o.onUpdate({ marks, extras: [...this.lapExtras[this.curLap]], lap: this.curLap, laps })
   }
 
   // 지연 측정 없이 할 때: 처음 3초쯤 친 소리와 악보가 가장 잘 겹치는 밀림을 지연으로 삼는다 (끝나고 하는 분석과 같은 방법)
@@ -131,7 +176,7 @@ export class LiveTracker {
 
   // 들을 만큼 들은 음표들을 짝짓고, 더 이상 짝이 될 수 없는 소리는 '악보에 없는 타격'으로 넘긴다
   private settle(until: number): boolean {
-    const clicks = this.o.metronomeAudible ? (this.o.clickTimes ?? []) : []
+    const clicks = this.o.metronomeAudible ? this.clicks : []
     if (this.bleed === undefined && until > 0.05) {
       const ci = clicks.filter(t => t < -0.01).slice(-(this.o.countInBeats ?? 4))
       const lv = clicks.length ? estimateBleed(this.countIn.map(h => h.t), this.countIn.map(h => h.s), ci) : null
@@ -150,9 +195,10 @@ export class LiveTracker {
         bleed: this.bleed != null ? { clickTimes: clicks, level: this.bleed } : undefined,
       })
       const used = new Set<number>()
-      for (const h of res.hits) {
-        const i = this.exp.findIndex(e => e.idx === h.idx)
-        if (i < this.decided || i >= end) continue
+      // 결과는 넣은 순서(시각 순) 그대로 — 바퀴마다 onset idx 가 같아서 idx 로 찾지 않고 자리로 맞춘다
+      res.hits.forEach((h, k) => {
+        const i = a + k
+        if (i < this.decided || i >= end) return
         if (h.played !== null) {
           const j = this.pool.findIndex(x => x.t === h.played)
           if (j >= 0) {
@@ -160,9 +206,14 @@ export class LiveTracker {
             this.matchedS.push(this.pool[j].s)
           }
         }
-        if (!h.roll) this.state.marks.set(h.idx, h.dev)
+        if (!h.roll) {
+          const lap = this.lapOf[i]
+          this.lapMarks[lap].set(h.idx, h.dev)
+          this.lapJudged[lap].push(h.dev)
+          if (h.dev !== null) this.allDevs.push(h.dev)
+        }
         changed = true
-      }
+      })
       this.pool = this.pool.filter((_, j) => !used.has(j))
       this.decided = end
     }
@@ -178,16 +229,16 @@ export class LiveTracker {
         keep.push(h)
         continue
       }
-      const nearClick = clicks.some(c => Math.abs(c - h.t) < 0.012)
       if (
         this.matchedS.length >= 4 &&
         h.t >= spanLo &&
         h.t <= spanHi &&
         h.s >= typical * 0.25 &&
-        !(nearClick && h.s < typical * 0.5) &&
+        !(near(clicks, h.t, 0.012) && h.s < typical * 0.5) &&
         !this.rollSpans.some(([x, y]) => h.t >= x && h.t <= y)
       ) {
-        this.state.extras.push(h.t)
+        const lap = this.loopLen ? Math.max(0, Math.min(this.maxLaps - 1, Math.floor(h.t / this.loopLen))) : 0
+        this.lapExtras[lap].push(h.t - lap * (this.loopLen ?? 0))
         changed = true
       }
     }
@@ -200,4 +251,16 @@ function median(a: number[]) {
   if (!a.length) return 0
   const s = [...a].sort((x, y) => x - y)
   return s[Math.floor(s.length / 2)]
+}
+
+// 정렬된 시각 목록에 tol 안으로 가까운 게 있는지
+function near(sorted: number[], t: number, tol: number) {
+  let lo = 0
+  let hi = sorted.length
+  while (lo < hi) {
+    const m = (lo + hi) >> 1
+    if (sorted[m] < t) lo = m + 1
+    else hi = m
+  }
+  return (lo > 0 && t - sorted[lo - 1] < tol) || (lo < sorted.length && sorted[lo] - t < tol)
 }
