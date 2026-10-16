@@ -33,6 +33,7 @@ interface Song {
   inRepertoire: boolean
   sheets: Sheet[]
   tracks: Track[]
+  practice: { songId: string } | null
 }
 interface Member {
   id: string
@@ -204,6 +205,21 @@ export default function SongDetailPage({ params }: { params: Promise<{ id: strin
       <p className="mt-1 text-xs text-zinc-500">
         위시 전용으로 바꾸면 연습곡 목록에서 빠지고 위시리스트에만 남아요
       </p>
+
+      {/* 혼자 연습 (파트별 음원이 준비된 곡만) */}
+      {song.practice && (
+        <Link
+          href={`/practice/${song.id}`}
+          className="mt-6 flex items-center gap-3 rounded-2xl bg-brand p-4 text-white active:bg-brand-dark"
+        >
+          <span className="text-3xl">🎧</span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-bold">혼자 연습하기</span>
+            <span className="block text-xs text-white/80">필요한 파트만 골라 틀고, 내 파트는 악보 보며 박자 체크까지</span>
+          </span>
+          <span className="text-xl">›</span>
+        </Link>
+      )}
 
       {/* 연습 음원 */}
       <section className="mt-6">

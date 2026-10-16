@@ -21,6 +21,7 @@ model Member {
   attendances Attendance[]
   votes       PollVote[]
   wishes      SongWish[]
+  practiceSessions PracticeSession[]
 }
 
 // 합주하고 싶은 곡 위시리스트
@@ -133,6 +134,36 @@ model Song {
   sheets     SheetMusic[]
   wishes     SongWish[]
   tracks     PracticeTrack[]
+  stems      PracticeStem[]
+  practice   PracticeSong?
+  practiceSessions PracticeSession[]
+}
+
+// 혼자 연습: 곡별 설정 (파트별 음원이 공유하는 시간축)
+// 모든 파트 음원은 0박 = 카운트인 시작, countInBeats 박 뒤 = 1마디 1박. 메트로놈 파트에만 카운트인 스틱이 있다.
+model PracticeSong {
+  songId       String   @id
+  bpm          Float
+  beatsPerBar  Int      @default(4)
+  countInBeats Int      @default(4)
+  bars         Int
+  updatedAt    DateTime @updatedAt
+
+  song Song @relation(fields: [songId], references: [id], onDelete: Cascade)
+}
+
+// 혼자 연습: 파트별 음원 (메트로놈·드럼·일렉·키보드·베이스 …) — 같이 틀면 박이 맞는다
+model PracticeStem {
+  id        String   @id @default(cuid())
+  songId    String
+  part      String // metronome | drums | guitar-lead | guitar-rhythm | keys | bass
+  file      String // uploads/ 폴더 파일명
+  score     String? // 이 파트의 악보 데이터(JSON) — 앱이 직접 그리는 악보·박자 체크 정답
+  createdAt DateTime @default(now())
+
+  song Song @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@unique([songId, part])
 }
 
 // 곡별 연습 음원 (드럼 반주 MP3 등 — 드럼 없이 맞춰 연습할 때)
@@ -218,4 +249,28 @@ model PollVote {
   member Member     @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@unique([optionId, memberId])
+}
+
+// 혼자 연습 기록 — 연습하기로 녹음·분석한 결과 (본인 것만 보인다)
+model PracticeSession {
+  id         String   @id @default(cuid())
+  memberId   String
+  songId     String
+  part       String // 내가 친 파트 (drums, keys, guitar-lead …)
+  fromBar    Int
+  toBar      Int // 실제로 분석한 마지막 마디
+  bpm        Float
+  accuracy   Int // ±20ms 안에 친 비율 (%)
+  medianDev  Float // ms (+ 늦게 / - 빨리)
+  meanAbs    Float // ms
+  missed     Int
+  extras     Int
+  calibrated Boolean
+  result     String // JSON: 타격별 오차 등 (lib/practice/sessions.ts 참고)
+  createdAt  DateTime @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  song   Song   @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@index([memberId, songId, createdAt])
 }
