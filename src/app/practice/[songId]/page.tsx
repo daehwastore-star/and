@@ -71,6 +71,7 @@ interface Take {
 type Phase = 'idle' | 'playing' | 'calibrating' | 'analyzing'
 
 const prefKey = (id: string) => `practicePrefs:${id}`
+const MIC_KEY = 'practiceMic' // 고른 마이크 (블루투스 이어폰 대신 폰 마이크를 쓰고 싶을 때)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 export default function PracticePage({ params }: { params: Promise<{ songId: string }> }) {
@@ -88,6 +89,8 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
   const [progress, setProgress] = useState(0)
   const [message, setMessage] = useState('')
   const [latency, setLatency] = useState<{ ms: number; at: string } | null>(null)
+  const [mics, setMics] = useState<{ deviceId: string; label: string }[]>([])
+  const [micId, setMicId] = useState<string | null>(null) // 고른 마이크 (없으면 기본)
   const [scores, setScores] = useState<Record<string, LoadedScore>>({})
   const [live, setLive] = useState<LiveState | null>(null)
   const [take, setTake] = useState<Take | null>(null)
@@ -147,6 +150,8 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       })
       .catch(() => setError('불러오지 못했어요'))
     setLatency(readJSON(LAT_KEY))
+    setMicId(readJSON<string>(MIC_KEY))
+    PracticeAudio.listMics().then(setMics)
     return () => {
       unmounted.current = true
       trackerRef.current?.stop()
@@ -256,9 +261,10 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     try {
       const audio = await getAudio(recording ? 'play-and-record' : 'playback')
       if (recording) {
-        await audio.openMic()
+        await audio.openMic(micId)
+        PracticeAudio.listMics().then(setMics)
         if (audio.micInfo()?.bluetooth)
-          setMessage('블루투스 이어폰 마이크로 녹음하고 있어요. 통화용 마이크라 드럼 소리가 깎여요 — 폰 마이크로 녹음되게 하려면 유선 이어폰이나 폰 스피커를 쓰세요.')
+          setMessage('블루투스 이어폰 마이크로 녹음하고 있어요. 통화용 마이크라 드럼 소리가 깎여요 — 녹음 설정의 \'마이크\'에서 폰 마이크(iPhone 마이크)를 골라 보세요.')
       }
       const player = await getPlayer()
       if (unmounted.current) return
@@ -540,7 +546,8 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     try {
       const audio = await getAudio('play-and-record')
       audio.stopAll()
-      await audio.openMic()
+      await audio.openMic(micId)
+      PracticeAudio.listMics().then(setMics)
       const sr = audio.ctx.sampleRate
       const cal = renderCalibration(sr)
       audio.startRecording()
@@ -925,6 +932,27 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
                         {phase === 'calibrating' ? '듣는 중…' : latency ? '다시 측정' : '측정하기'}
                       </button>
                     </div>
+                  )}
+                  {record && mics.length > 1 && (
+                    <label className="mt-2 flex items-center justify-between gap-2 border-t border-zinc-200 pt-2 text-xs text-zinc-500">
+                      <span className="shrink-0">마이크</span>
+                      <select
+                        value={micId && mics.some(m => m.deviceId === micId) ? micId : ''}
+                        onChange={e => {
+                          const v = e.target.value || null
+                          setMicId(v)
+                          writeJSON(MIC_KEY, v)
+                        }}
+                        className="min-w-0 flex-1 truncate rounded-lg bg-surface px-2 py-1.5 text-xs text-zinc-800 outline-none"
+                      >
+                        <option value="">기본 마이크</option>
+                        {mics.map(m => (
+                          <option key={m.deviceId} value={m.deviceId}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   )}
                   {record && (
                     <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
