@@ -1,7 +1,7 @@
 'use client'
 
 // 박자 체크: 녹음 분석 + 지연 측정값 보관 (연습 화면에서 쓴다)
-import { detectOnsets, estimateBleed, estimateGlobalLag, matchHits, type ExpectedHit, type MatchResult } from './analysis'
+import { detectOnsets, estimateBleed, estimateGlobalLag, matchHits, type BleedInfo, type ExpectedHit, type MatchResult } from './analysis'
 import type { Recording } from './engine'
 
 export const LAT_KEY = 'drumPracticeLatency'
@@ -38,17 +38,22 @@ export async function analyzeRecording(o: {
   metronomeAudible: boolean
   bleedScale?: number // 곡 중 메트로놈 음량 ÷ 카운트인 음량 (카운트인으로 잰 새는 소리를 곡 중 크기로)
   onProgress?: (p: number) => void
-}): Promise<{ match: MatchResult; latency: number; calibrated: boolean }> {
+}): Promise<{ match: MatchResult; latency: number; calibrated: boolean; bleed: BleedInfo | null }> {
   const { rec, gridOriginCtx } = o
   const spb = 60 / o.bpm
   const barLen = o.beatsPerBar * spb
   const gridRel = gridOriginCtx - rec.startTime // 녹음 안에서 구간 첫 마디 1박 (초)
   const span = (o.stoppedAtBar - o.fromBar + 1) * barLen
   const guessLat = o.latency ?? 0
+  let bleed: BleedInfo | null = null
   const onsets = await detectOnsets(rec.samples, rec.sampleRate, {
     from: gridRel + guessLat - o.countInBeats * spb - 0.2,
     to: gridRel + Math.max(guessLat, 0.45) + span + 0.4,
     onProgress: o.onProgress,
+    // 스피커로 튼 반주가 마이크에 새어 들어온 건 빼고 찾는다
+    reference: rec.reference,
+    referenceLag: o.latency,
+    onBleed: b => (bleed = b),
   })
   const exp = o.expected.filter(e => e.m <= o.stoppedAtBar)
   let lat = guessLat
@@ -68,7 +73,7 @@ export async function analyzeRecording(o: {
     bleed: level === null ? undefined : { clickTimes: o.clickTimes, level },
     spanEnd: span + 0.1,
   })
-  return { match, latency: lat, calibrated: o.latency !== null }
+  return { match, latency: lat, calibrated: o.latency !== null, bleed }
 }
 
 /** 중간에 멈췄을 때: 마지막으로 뭔가 친 마디까지만 (멈춘 뒤 빈 마디를 '놓침'으로 세지 않게) */

@@ -5,7 +5,8 @@
 //
 // 같은 소리를 여러 번 훑으면 매번 시각이 조금씩 달라 이중으로 잡히므로, 시간 구간마다 딱 한 번만 '확정'한다.
 // 창 맨 앞쪽은 앞 맥락이 없어 가짜 타격이 생기니 버리고, 맨 뒤쪽은 소리가 덜 들어왔으니 다음 차례로 미룬다.
-import { detectOnsets, estimateBleed, estimateGlobalLag, matchHits, type ExpectedHit } from './analysis'
+import { estimateBleed, estimateGlobalLag, matchHits, type ExpectedHit } from './analysis'
+import { detectOnsetsOffThread } from './onsetWorker'
 import type { PracticeAudio } from './engine'
 
 export interface LiveState {
@@ -38,6 +39,7 @@ export class LiveTracker {
   private exp: ExpectedHit[]
   private rollSpans: [number, number][] = []
   private lat: number | null // 소리 지연 (초). 측정 안 했으면 처음 몇 초 친 걸로 추정
+  bleedLevel = 0 // 스피커 반주가 마이크에 들어온 정도 (0~1)
 
   constructor(
     private audio: PracticeAudio,
@@ -82,7 +84,9 @@ export class LiveTracker {
       const now = this.audio.ctx.currentTime
       const commitTo = now - TAIL_WAIT
       if (commitTo <= this.committed) return
-      const onsets = await detectOnsets(rec.samples, rec.sampleRate)
+      // 스피커로 튼 반주가 마이크에 새어 들어온 건 빼고 찾는다 (워커에서 — 화면이 안 끊기게)
+      const { onsets, bleed } = await detectOnsetsOffThread(rec.samples, rec.sampleRate, { reference: rec.reference, referenceLag: this.lat })
+      if (bleed) this.bleedLevel = Math.max(this.bleedLevel, bleed.level)
       const lo = Math.max(this.committed, rec.startTime + LEAD_GUARD)
       for (const on of onsets) {
         const tc = rec.startTime + on.time

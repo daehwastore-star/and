@@ -17,6 +17,7 @@ import { expectedFromOnsets, onsetsOf, parseScore, scoreHash, type Onset, type P
 import { decodeResult, encodeResult, frequentTroubles, toMatch, type SessionRow } from '@/lib/practice/sessions'
 import { analyzeRecording, LAT_KEY, readJSON, trimMatch, writeJSON } from '@/lib/practice/check'
 import { getMyId } from '@/lib/identity'
+import { setImmersive } from '@/lib/immersive'
 import { partEmoji } from '@/lib/sheets'
 
 interface PracticeConfig {
@@ -133,6 +134,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       audioRef.current = null
       playerRef.current = null
       wakeRef.current?.release().catch(() => {})
+      setImmersive(false)
     }
   }, [songId])
 
@@ -225,7 +227,11 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     let recStarted = false
     try {
       const audio = await getAudio(recording ? 'play-and-record' : 'playback')
-      if (recording) await audio.openMic()
+      if (recording) {
+        await audio.openMic()
+        if (audio.micInfo()?.bluetooth)
+          setMessage('블루투스 이어폰 마이크로 녹음하고 있어요. 통화용 마이크라 드럼 소리가 깎여요 — 폰 마이크로 녹음되게 하려면 유선 이어폰이나 폰 스피커를 쓰세요.')
+      }
       const player = await getPlayer()
       if (unmounted.current) return
       audio.stopAll()
@@ -269,6 +275,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       }
       if (!recording) setLive(null)
       setPhase('playing')
+      setImmersive(true)
       try {
         const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }
         wakeRef.current = (await nav.wakeLock?.request('screen')) ?? null
@@ -306,6 +313,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
     const pos = player.beatNow()
     player.onEnded = null
     player.stop()
+    setImmersive(false)
     trackerRef.current?.stop()
     trackerRef.current = null
     wakeRef.current?.release().catch(() => {})
@@ -361,8 +369,16 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
       const raw = summarize(t.match, t.fromBar, t.toBar, 0, barLen)
       const sum = t.calibrated ? raw : summarize(t.match, t.fromBar, t.toBar, raw.medianDev, barLen)
       setSelectedBar(sum.worst[0] ?? null)
-      // 자동 저장 (내 기록)
-      if (myId) {
+      const scored = t.match.hits.filter(h => !h.roll)
+      const heard = scored.filter(h => h.dev !== null).length
+      const empty = scored.length > 0 && heard < scored.length * 0.15
+      const notes: string[] = []
+      if (out.bleed && out.bleed.level >= 0.3)
+        notes.push('폰 스피커 반주가 마이크에 많이 들어왔어요. 반주 소리는 빼고 분석했지만, 이어폰을 끼고 하면 더 정확해요.')
+      if (empty) notes.push('친 소리가 거의 안 잡혀서 이번 연습은 기록에 남기지 않았어요.')
+      if (notes.length) setMessage(notes.join(' '))
+      // 자동 저장 (내 기록) — 거의 안 친 연습은 남기지 않는다
+      if (myId && !empty) {
         await fetch(`/api/practice/${songId}/sessions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -746,7 +762,14 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
           {message && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{message}</p>}
 
           {/* 시작 / 진행 */}
-          <section className={`sticky top-2 z-30 mt-4 rounded-2xl p-3 shadow-sm ${recordingNow ? 'bg-zinc-900 text-white' : 'bg-surface'}`}>
+          {/* 연습 중엔 위·아래 막대를 치우고 아래에 작은 조작 막대만 띄운다 (악보를 넓게) */}
+          <section
+            className={
+              playing
+                ? `fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-50 mx-auto max-w-md rounded-full py-1.5 pl-4 pr-1.5 shadow-lg backdrop-blur ${recordingNow ? 'bg-zinc-900/90 text-white' : 'bg-white/95'}`
+                : 'sticky top-2 z-30 mt-4 rounded-2xl bg-surface p-3 shadow-sm'
+            }
+          >
             {phase === 'analyzing' ? (
               <div>
                 <div className="text-center text-sm font-semibold">연습 분석 중… {Math.round(progress * 100)}%</div>
@@ -758,7 +781,7 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
               <div className="flex items-center gap-3">
                 {recordingNow && <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />}
                 <PosText player={playerRef.current} beatsPerBar={cfg.beatsPerBar} total={total} />
-                <button type="button" onClick={stop} className={`ml-auto shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold ${recordingNow ? 'bg-white/15' : 'bg-zinc-900 text-white'}`}>
+                <button type="button" onClick={stop} className={`ml-auto shrink-0 rounded-full px-4 py-2.5 text-sm font-bold ${recordingNow ? 'bg-white/15' : 'bg-zinc-900 text-white'}`}>
                   ■ {recordingNow ? '그만 (분석)' : '정지'}
                 </button>
               </div>
@@ -783,28 +806,33 @@ export default function PracticePage({ params }: { params: Promise<{ songId: str
 
           {/* 악보 */}
           {myPart !== 'none' && (
-            <section ref={scoreRef} className="mt-3 scroll-mt-24 rounded-2xl bg-surface px-1 py-3">
+            <section
+              ref={scoreRef}
+              className="mt-3 scroll-mt-24 rounded-2xl bg-surface px-1 py-3 landscape:ml-[calc(50%-50vw)] landscape:w-screen landscape:rounded-none landscape:px-3"
+            >
               <div className="flex items-center justify-between px-3">
                 <h2 className="text-base font-semibold">
                   {partInfo(myPart).emoji} {partInfo(myPart).label} 악보
                 </h2>
                 <span className="text-[11px] text-zinc-500">{playing ? '진행선을 따라 치세요' : view && !view.stale ? view.title : ''}</span>
               </div>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 px-3 text-[11px] text-zinc-500">
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full bg-zinc-900" /> 악보 (정확하면 그대로)
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: EARLY, opacity: 0.6 }} /> 빨리 친 소리
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: LATE, opacity: 0.6 }} /> 늦게 친 소리
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-full border border-dashed border-zinc-400" /> 놓침
-                </span>
-                <span>· 차이는 {EXAG}배로 키워서 보여줘요</span>
-              </div>
+              {!playing && (
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 px-3 text-[11px] text-zinc-500">
+                  <span className="flex items-center gap-1">
+                    <span className="h-2.5 w-2.5 rounded-full bg-zinc-900" /> 악보 (정확하면 그대로)
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: EARLY, opacity: 0.6 }} /> 빨리 친 소리
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: LATE, opacity: 0.6 }} /> 늦게 친 소리
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2.5 w-2.5 rounded-full border border-dashed border-zinc-400" /> 놓침
+                  </span>
+                  <span>· 차이는 {EXAG}배로 키워서 보여줘요</span>
+                </div>
+              )}
               {view?.stale && <p className="mt-2 px-3 text-xs text-amber-700">이 기록은 악보가 바뀌기 전에 한 거라 악보 위에 표시할 수 없어요.</p>}
               <div className="mt-2">
                 {cur ? (

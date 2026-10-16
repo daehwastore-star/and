@@ -86,7 +86,7 @@ function layout(
   pad: { top: number; bot: number },
   keySig: number,
 ): Geo {
-  const barsPerRow = width < 440 ? 2 : width < 760 ? 3 : 4
+  const barsPerRow = width < 440 ? 2 : width < 600 ? 3 : 4 // 폰 가로(600px 넘음)면 4마디
   const barW = (width - 4) / barsPerRow
   const staffTop = (type === 'drums' ? 38 : 34) + pad.top
   const staff2Top = grand ? staffTop + STAFF_H + 44 : staffTop
